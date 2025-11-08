@@ -63,7 +63,53 @@ class SupabaseService {
         .select()
         .single();
     
+    // Update user stats - increment collections count
+    await _incrementUserStat(ownerId, 'collections');
+    
     return CollectionModel.fromJson(response);
+  }
+
+  Future<void> deleteCollection(String collectionId) async {
+    // Delete collection articles first (foreign key constraint)
+    await _client
+        .from('collection_articles')
+        .delete()
+        .eq('collection_id', collectionId);
+    
+    // Delete the collection
+    await _client
+        .from('collections')
+        .delete()
+        .eq('id', collectionId);
+  }
+
+  // Helper method to increment user stats
+  Future<void> _incrementUserStat(String userId, String statName) async {
+    try {
+      // Get current stats
+      final userResponse = await _client
+          .from('users')
+          .select('stats')
+          .eq('uid', userId)
+          .single();
+      
+      final stats = userResponse['stats'] as Map<String, dynamic>? ?? {
+        'articles': 0,
+        'collections': 0,
+        'chats': 0,
+      };
+      
+      // Increment the specified stat
+      stats[statName] = (stats[statName] as int? ?? 0) + 1;
+      
+      // Update the stats
+      await _client
+          .from('users')
+          .update({'stats': stats})
+          .eq('uid', userId);
+    } catch (e) {
+      print('Error updating user stats: $e');
+    }
   }
 
   // ===== Sources =====
@@ -179,6 +225,9 @@ class SupabaseService {
       'article_id': articleId,
       'added_by': addedBy,
     });
+    
+    // Update user stats - increment articles count
+    await _incrementUserStat(addedBy, 'articles');
   }
 
   Future<List<ArticleModel>> getCollectionArticles(String collectionId) async {

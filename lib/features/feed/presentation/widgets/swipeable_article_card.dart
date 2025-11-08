@@ -4,7 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/models/article_model.dart';
 import '../providers/feed_provider.dart';
-import 'package:intl/intl.dart';
+import '../../../collections/presentation/widgets/add_to_collection_modal.dart';
 
 class SwipeableArticleCard extends ConsumerStatefulWidget {
   final ArticleModel article;
@@ -315,7 +315,14 @@ class _SwipeableArticleCardState extends ConsumerState<SwipeableArticleCard>
                                 color: AppTheme.textGray,
                               ),
                               onPressed: () {
-                                // TODO: Quick save
+                                showModalBottomSheet(
+                                  context: context,
+                                  isScrollControlled: true,
+                                  backgroundColor: Colors.transparent,
+                                  builder: (context) => AddToCollectionModal(
+                                    article: widget.article,
+                                  ),
+                                );
                               },
                             ),
                             IconButton(
@@ -324,7 +331,12 @@ class _SwipeableArticleCardState extends ConsumerState<SwipeableArticleCard>
                                 color: AppTheme.textGray,
                               ),
                               onPressed: () {
-                                // TODO: Comment or discuss
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Comments coming soon!'),
+                                    duration: Duration(seconds: 1),
+                                  ),
+                                );
                               },
                             ),
                             IconButton(
@@ -333,7 +345,18 @@ class _SwipeableArticleCardState extends ConsumerState<SwipeableArticleCard>
                                 color: AppTheme.textGray,
                               ),
                               onPressed: () {
-                                // TODO: Share article
+                                // Simple clipboard copy for now
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Share: ${widget.article.title}'),
+                                    action: SnackBarAction(
+                                      label: 'Copy Link',
+                                      onPressed: () {
+                                        // TODO: Copy to clipboard
+                                      },
+                                    ),
+                                  ),
+                                );
                               },
                             ),
                           ],

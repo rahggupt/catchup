@@ -67,6 +67,9 @@ class FeedNotifier extends StateNotifier<AsyncValue<List<ArticleModel>>> {
 // Selected filter provider
 final selectedFilterProvider = StateProvider<String>((ref) => 'All Sources');
 
+// Time filter provider
+final selectedTimeFilterProvider = StateProvider<String>((ref) => 'All');
+
 // Available filters
 final filtersProvider = Provider<List<String>>((ref) {
   return ['All Sources', 'AI Topics', 'Friends\' Adds', 'Tech', 'Science'];

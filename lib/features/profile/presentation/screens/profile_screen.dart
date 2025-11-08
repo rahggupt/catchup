@@ -2,15 +2,32 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/services/mock_data_service.dart';
+import '../../../../core/config/supabase_config.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../providers/profile_provider.dart';
+import '../../../feed/presentation/widgets/add_source_modal.dart';
+import '../widgets/ai_config_modal.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = MockDataService.getMockUser();
-    final sources = MockDataService.getMockSources();
+    final userAsync = ref.watch(profileUserProvider);
+    final sourcesAsync = ref.watch(userSourcesProvider);
+    
+    return userAsync.when(
+      loading: () => const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      ),
+      error: (error, stack) => Scaffold(
+        body: Center(child: Text('Error: $error')),
+      ),
+      data: (user) {
+        final sources = sourcesAsync.maybeWhen(
+          data: (data) => data,
+          orElse: () => MockDataService.getMockSources(),
+        );
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -156,13 +173,36 @@ class ProfileScreen extends ConsumerWidget {
                           ),
                         ),
                         TextButton(
-                          onPressed: () {},
+                          onPressed: () {
+                            showModalBottomSheet(
+                              context: context,
+                              isScrollControlled: true,
+                              backgroundColor: Colors.transparent,
+                              builder: (context) => const AddSourceModal(),
+                            );
+                          },
                           child: const Text('Add More'),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
-                    ...sources.map((source) => _SourceCard(source: source)),
+                    // Only show active sources (hide disabled ones)
+                    ...sources.where((s) => s.active).map((source) => _SourceCard(source: source)),
+                    
+                    // Show disabled sources separately if any
+                    if (sources.any((s) => !s.active)) ...[
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Disabled Sources',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textGray,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ...sources.where((s) => !s.active).map((source) => _SourceCard(source: source)),
+                    ],
                   ],
                 ),
               ),
@@ -213,7 +253,12 @@ class ProfileScreen extends ConsumerWidget {
                         ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () {
-                          // TODO: Navigate to AI config screen
+                          showModalBottomSheet(
+                            context: context,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (context) => const AIConfigModal(),
+                          );
                         },
                       ),
                     ),
@@ -239,14 +284,72 @@ class ProfileScreen extends ConsumerWidget {
                       label: 'Anonymous Adds',
                       description: 'Hide your name when adding to shared collections',
                       value: user.settings.anonymousAdds,
-                      onChanged: (value) {},
+                      onChanged: (value) async {
+                        try {
+                          final authUser = SupabaseConfig.client.auth.currentUser;
+                          if (authUser != null) {
+                            final supabaseService = ref.read(supabaseServiceProvider);
+                            await supabaseService.updateUser(authUser.id, {
+                              'settings': {
+                                'anonymous_adds': value,
+                                'friend_updates': user.settings.friendUpdates,
+                              },
+                            });
+                            ref.invalidate(profileUserProvider);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(value 
+                                  ? 'Anonymous adds enabled' 
+                                  : 'Anonymous adds disabled'),
+                                duration: const Duration(seconds: 1),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      },
                     ),
                     const SizedBox(height: 12),
                     _SettingRow(
                       label: 'Friend Updates',
                       description: 'Get notified when friends save articles',
                       value: user.settings.friendUpdates,
-                      onChanged: (value) {},
+                      onChanged: (value) async {
+                        try {
+                          final authUser = SupabaseConfig.client.auth.currentUser;
+                          if (authUser != null) {
+                            final supabaseService = ref.read(supabaseServiceProvider);
+                            await supabaseService.updateUser(authUser.id, {
+                              'settings': {
+                                'anonymous_adds': user.settings.anonymousAdds,
+                                'friend_updates': value,
+                              },
+                            });
+                            ref.invalidate(profileUserProvider);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(value 
+                                  ? 'Friend updates enabled' 
+                                  : 'Friend updates disabled'),
+                                duration: const Duration(seconds: 1),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      },
                     ),
                   ],
                 ),
@@ -267,7 +370,38 @@ class ProfileScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 12),
                     OutlinedButton(
-                      onPressed: () {},
+                      onPressed: () async {
+                        try {
+                          final authUser = SupabaseConfig.client.auth.currentUser;
+                          if (authUser == null) return;
+                          
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Preparing your data export...'),
+                            ),
+                          );
+                          
+                          // TODO: Implement actual data export with share dialog
+                          // For now, show success message
+                          await Future.delayed(const Duration(seconds: 1));
+                          
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Data export ready! (Feature coming soon)'),
+                                backgroundColor: AppTheme.successGreen,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      },
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size(double.infinity, 44),
                       ),
@@ -296,6 +430,8 @@ class ProfileScreen extends ConsumerWidget {
           ),
         ),
       ),
+    );
+      },
     );
   }
 }
@@ -344,10 +480,75 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-class _SourceCard extends StatelessWidget {
+class _SourceCard extends ConsumerStatefulWidget {
   final source;
 
   const _SourceCard({required this.source});
+
+  @override
+  ConsumerState<_SourceCard> createState() => _SourceCardState();
+}
+
+class _SourceCardState extends ConsumerState<_SourceCard> {
+  late bool isActive;
+
+  @override
+  void initState() {
+    super.initState();
+    isActive = widget.source.active;
+  }
+
+  Future<void> _toggleSource(bool value) async {
+    setState(() => isActive = value);
+
+    // Check if this is a mock source (simple numeric ID) or real UUID
+    final isMockSource = !widget.source.id.contains('-') || widget.source.id.length < 10;
+    
+    if (isMockSource) {
+      // Just update UI for mock sources
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(value 
+              ? '${widget.source.name} enabled (mock mode)' 
+              : '${widget.source.name} disabled (mock mode)'),
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      final supabaseService = ref.read(supabaseServiceProvider);
+      await supabaseService.toggleSource(widget.source.id, value);
+      
+      // Refresh the sources list
+      ref.invalidate(userSourcesProvider);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(value 
+              ? '${widget.source.name} enabled' 
+              : '${widget.source.name} disabled'),
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+    } catch (e) {
+      // Revert on error
+      setState(() => isActive = !value);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating source: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -365,7 +566,7 @@ class _SourceCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  source.name,
+                  widget.source.name,
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
@@ -375,7 +576,7 @@ class _SourceCard extends StatelessWidget {
                 Wrap(
                   spacing: 4,
                   runSpacing: 4,
-                  children: source.topics.map<Widget>((topic) {
+                  children: widget.source.topics.map<Widget>((topic) {
                     return Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
@@ -383,7 +584,7 @@ class _SourceCard extends StatelessWidget {
                       ),
                       decoration: BoxDecoration(
                         color: AppTheme.primaryBlue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         topic,
@@ -399,8 +600,8 @@ class _SourceCard extends StatelessWidget {
             ),
           ),
           Switch(
-            value: source.active,
-            onChanged: (value) {},
+            value: isActive,
+            onChanged: _toggleSource,
           ),
         ],
       ),

@@ -29,6 +29,7 @@ dependencies:
   # HTTP & API
   dio: ^5.4.0
   http: ^1.2.0
+  dart_rss: ^3.0.0
   
   # Social Auth
   google_sign_in: ^6.2.0

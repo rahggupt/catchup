@@ -2,18 +2,49 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../providers/feed_provider.dart';
+import '../providers/rss_feed_provider.dart';
 import '../widgets/swipeable_article_card.dart';
 import '../widgets/article_progress_indicator.dart';
+import '../widgets/add_source_modal.dart';
+import '../../../collections/presentation/widgets/add_to_collection_modal.dart';
 
 class FeedScreen extends ConsumerWidget {
   const FeedScreen({super.key});
 
+  void _showSearchDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Search Articles'),
+        content: TextField(
+          decoration: const InputDecoration(
+            hintText: 'Search by title, topic, or source...',
+            prefixIcon: Icon(Icons.search),
+          ),
+          onSubmitted: (query) {
+            // TODO: Implement search functionality
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Searching for: $query')),
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final feedArticlesAsync = ref.watch(feedArticlesProvider);
+    final feedArticlesAsync = ref.watch(filteredArticlesProvider);
     final selectedFilter = ref.watch(selectedFilterProvider);
     final filters = ref.watch(filtersProvider);
+    final selectedTime = ref.watch(selectedTimeFilterProvider);
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
@@ -42,13 +73,18 @@ class FeedScreen extends ConsumerWidget {
                           IconButton(
                             icon: const Icon(Icons.search),
                             onPressed: () {
-                              // TODO: Implement search
+                              _showSearchDialog(context);
                             },
                           ),
                           IconButton(
                             icon: const Icon(Icons.add),
                             onPressed: () {
-                              // TODO: Implement add source
+                              showModalBottomSheet(
+                                context: context,
+                                isScrollControlled: true,
+                                backgroundColor: Colors.transparent,
+                                builder: (context) => const AddSourceModal(),
+                              );
                             },
                           ),
                         ],
@@ -56,7 +92,62 @@ class FeedScreen extends ConsumerWidget {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  // Filter Chips
+                  
+                  // Time Filter Row
+                  Row(
+                    children: [
+                      const Text(
+                        'Time: ',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textGray,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: SizedBox(
+                          height: 36,
+                          child: Consumer(
+                            builder: (context, watchRef, _) {
+                              final selectedTime = watchRef.watch(selectedTimeFilterProvider);
+                              final timeFilters = ['2h', '6h', '24h', 'All'];
+                              
+                              return ListView.separated(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: timeFilters.length,
+                                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                                itemBuilder: (context, index) {
+                                  final filter = timeFilters[index];
+                                  final isSelected = filter == selectedTime;
+                                  return FilterChip(
+                                    label: Text(filter),
+                                    selected: isSelected,
+                                    onSelected: (_) {
+                                      ref.read(selectedTimeFilterProvider.notifier).state = filter;
+                                      ref.read(feedArticlesProvider.notifier).refresh();
+                                    },
+                                    backgroundColor: isSelected 
+                                        ? AppTheme.secondaryPurple 
+                                        : AppTheme.backgroundLight,
+                                    selectedColor: AppTheme.secondaryPurple,
+                                    labelStyle: TextStyle(
+                                      color: isSelected ? Colors.white : AppTheme.textGray,
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 13,
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // Topic Filter Chips
                   SizedBox(
                     height: 40,
                     child: ListView.separated(
@@ -184,11 +275,61 @@ class FeedScreen extends ConsumerWidget {
                           currentIndex: currentIndex,
                         ),
                       ),
+                      // Refresh hint
+                      Positioned(
+                        top: 8,
+                        left: 0,
+                        right: 0,
+                        child: GestureDetector(
+                          onTap: () {
+                            ref.read(feedArticlesProvider.notifier).refresh();
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+                            margin: const EdgeInsets.symmetric(horizontal: 100),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.refresh,
+                                  size: 14,
+                                  color: Colors.white.withOpacity(0.9),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Tap to refresh',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.white.withOpacity(0.9),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   );
                 },
-                loading: () => const Center(
-                  child: CircularProgressIndicator(),
+                loading: () => Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Fetching articles from RSS feeds...',
+                        style: TextStyle(
+                          color: AppTheme.textGray.withOpacity(0.8),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 error: (error, stack) => Center(
                   child: Column(
@@ -232,32 +373,9 @@ class FeedScreen extends ConsumerWidget {
   void _showSaveToCollectionModal(BuildContext context, article) {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Save to Collection',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Article saved! Collection selection coming soon.',
-              style: Theme.of(context).textTheme.bodyMedium,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
-        ),
-      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => AddToCollectionModal(article: article),
     );
   }
 }
