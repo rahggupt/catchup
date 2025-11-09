@@ -499,13 +499,12 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
   }
 
   Future<void> _toggleSource(bool value) async {
-    setState(() => isActive = value);
-
-    // Check if this is a mock source (simple numeric ID) or real UUID
-    final isMockSource = !widget.source.id.contains('-') || widget.source.id.length < 10;
+    // Check if this is a mock source (simple numeric ID like "1", "2") or real UUID
+    final isMockSource = !widget.source.id.contains('-') && widget.source.id.length < 5;
     
     if (isMockSource) {
       // Just update UI for mock sources
+      setState(() => isActive = value);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -523,7 +522,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
       final supabaseService = ref.read(supabaseServiceProvider);
       await supabaseService.toggleSource(widget.source.id, value);
       
-      // Refresh the sources list
+      // Refresh the sources list and feed - this will rebuild the entire sources section
       ref.invalidate(userSourcesProvider);
       
       if (mounted) {
@@ -537,12 +536,75 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
         );
       }
     } catch (e) {
-      // Revert on error
-      setState(() => isActive = !value);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error updating source: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteSource() async {
+    // Check if this is a mock source
+    final isMockSource = !widget.source.id.contains('-') && widget.source.id.length < 5;
+    
+    if (isMockSource) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cannot delete mock sources'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Confirm deletion
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Source'),
+        content: Text('Are you sure you want to delete "${widget.source.name}"? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.errorRed),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final supabaseService = ref.read(supabaseServiceProvider);
+      await supabaseService.deleteSource(widget.source.id);
+      
+      // Refresh the sources list and feed
+      ref.invalidate(userSourcesProvider);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Source deleted'),
+            backgroundColor: AppTheme.successGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting source: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -598,6 +660,12 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
                 ),
               ],
             ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, size: 20),
+            color: AppTheme.textGray,
+            onPressed: _deleteSource,
+            tooltip: 'Delete source',
           ),
           Switch(
             value: isActive,

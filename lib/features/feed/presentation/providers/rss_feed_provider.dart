@@ -16,23 +16,34 @@ final feedArticlesProvider = StateNotifierProvider<RssFeedNotifier, AsyncValue<L
   return RssFeedNotifier(
     ref.read(rssFeedServiceProvider),
     ref.read(articleCacheServiceProvider),
-    ref.watch(userSourcesProvider),
+    ref,
   );
 });
 
 class RssFeedNotifier extends StateNotifier<AsyncValue<List<ArticleModel>>> {
   final RssFeedService _rssService;
   final ArticleCacheService _cacheService;
-  final AsyncValue<List<SourceModel>> _sourcesAsync;
+  final Ref _ref;
   
   bool _isRefreshing = false;
   
   RssFeedNotifier(
     this._rssService,
     this._cacheService,
-    this._sourcesAsync,
+    this._ref,
   ) : super(const AsyncValue.loading()) {
-    _loadArticles();
+    // Watch sources and reload whenever they change
+    _ref.listen<AsyncValue<List<SourceModel>>>(
+      userSourcesProvider,
+      (previous, next) {
+        next.whenData((sources) {
+          print('🔄 Sources changed! Active sources: ${sources.where((s) => s.active).map((s) => s.name).toList()}');
+          // Clear cache and reload immediately
+          _cacheService.clearCache().then((_) => _loadArticles());
+        });
+      },
+      fireImmediately: true,
+    );
   }
 
   /// Load articles with caching strategy
@@ -77,7 +88,8 @@ class RssFeedNotifier extends StateNotifier<AsyncValue<List<ArticleModel>>> {
 
   /// Fetch fresh articles from RSS feeds
   Future<void> _fetchFreshArticles() async {
-    await _sourcesAsync.when(
+    final sourcesAsync = _ref.read(userSourcesProvider);
+    await sourcesAsync.when(
       data: (sources) async {
         // Get only active sources
         final activeSources = sources.where((s) => s.active).toList();
@@ -89,28 +101,35 @@ class RssFeedNotifier extends StateNotifier<AsyncValue<List<ArticleModel>>> {
         }
         
         final sourceNames = activeSources.map((s) => s.name).toList();
-        print('Fetching from ${sourceNames.length} active sources: $sourceNames');
+        final articleCount = activeSources.isNotEmpty 
+            ? (activeSources.first.articleCount ?? 5) 
+            : 5;
+        
+        print('Fetching from ${sourceNames.length} active sources: $sourceNames (limit: $articleCount per source)');
         
         // Progressive loading: Fetch each source individually and update UI
         final List<ArticleModel> allArticles = [];
         
-        for (final sourceName in sourceNames) {
+        for (final source in activeSources) {
           try {
-            print('Fetching from $sourceName...');
-            final articles = await _rssService.fetchFromSource(sourceName);
+            print('Fetching from ${source.name}...');
+            final articles = await _rssService.fetchFromSource(
+              source.name,
+              limit: source.articleCount ?? 5,
+            );
             
             if (articles.isNotEmpty) {
               allArticles.addAll(articles);
               
               // Sort by date (newest first)
-              allArticles.sort((a, b) => b.publishedAt.compareTo(a.publishedAt));
+              allArticles.sort((a, b) => (b.publishedAt ?? DateTime.now()).compareTo(a.publishedAt ?? DateTime.now()));
               
               // Progressive update: Show articles as they come in
               state = AsyncValue.data(List.from(allArticles));
-              print('✓ Added ${articles.length} articles from $sourceName (total: ${allArticles.length})');
+              print('✓ Added ${articles.length} articles from ${source.name} (total: ${allArticles.length})');
             }
           } catch (e) {
-            print('✗ Failed to fetch from $sourceName: $e');
+            print('✗ Failed to fetch from ${source.name}: $e');
             // Continue with other sources
           }
         }
@@ -204,7 +223,8 @@ final filteredArticlesProvider = Provider<AsyncValue<List<ArticleModel>>>((ref) 
       
       // Filter articles
       final filtered = articles.where((article) {
-        return article.publishedAt.isAfter(cutoff);
+        final pubDate = article.publishedAt ?? DateTime.now();
+        return pubDate.isAfter(cutoff);
       }).toList();
       
       print('Time filter $timeFilter: ${filtered.length} of ${articles.length} articles');
