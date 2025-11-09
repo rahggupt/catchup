@@ -143,10 +143,10 @@ void main() {
       if (geminiApiKey.isEmpty) return;
 
       try {
-        // Use gemini-pro which is stable and available
+        // Use gemini-2.0-flash-exp (Gemini 2.5 family - latest stable)
         final response = await http.post(
           Uri.parse(
-              'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=$geminiApiKey'),
+              'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=$geminiApiKey'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
             'contents': [
@@ -163,9 +163,9 @@ void main() {
           final data = jsonDecode(response.body);
           expect(data['candidates'], isNotEmpty,
               reason: 'Should return generated content');
-          print('✅ Gemini content generation successful');
+          print('✅ Gemini 2.0 Flash (2.5 family) content generation successful');
         } else {
-          print('⚠️  Gemini generation: ${response.statusCode} - Model may not be available');
+          print('⚠️  Gemini generation: ${response.statusCode} - ${response.body}');
         }
       } catch (e) {
         print('⚠️  Gemini generation test warning: $e');
@@ -266,9 +266,10 @@ void main() {
       }
 
       try {
+        // Updated to NEW router endpoint (api-inference.huggingface.co is deprecated)
         final response = await http.post(
           Uri.parse(
-              'https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2'),
+              'https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2'),
           headers: {
             'Authorization': 'Bearer $huggingFaceApiKey',
             'Content-Type': 'application/json',
@@ -286,7 +287,7 @@ void main() {
         expect(embeddings, isNotEmpty,
             reason: 'Should return embedding vectors');
         
-        print('✅ Hugging Face API connection successful');
+        print('✅ Hugging Face API connection successful (router endpoint)');
         print('   Embedding dimensions: ${embeddings is List ? embeddings[0].length : 'N/A'}');
       } catch (e) {
         fail('❌ Hugging Face API test failed: $e');
@@ -920,7 +921,7 @@ void main() {
       print('   1. Generating embeddings...');
       final embeddingResponse = await http.post(
         Uri.parse(
-            'https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2'),
+            'https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2'),
         headers: {
           'Authorization': 'Bearer $huggingFaceApiKey',
           'Content-Type': 'application/json',
@@ -931,7 +932,7 @@ void main() {
         }),
       );
       expect(embeddingResponse.statusCode, equals(200));
-      print('   ✅ Embeddings generated');
+      print('   ✅ Embeddings generated (router endpoint)');
 
       // Step 2: Check Qdrant
       print('   2. Checking Qdrant...');
@@ -943,10 +944,10 @@ void main() {
       print('   ✅ Qdrant accessible');
 
       // Step 3: Test Gemini
-      print('   3. Testing Gemini...');
+      print('   3. Testing Gemini 2.0 Flash...');
       final geminiResponse = await http.post(
         Uri.parse(
-            'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=$geminiApiKey'),
+            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=$geminiApiKey'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'contents': [

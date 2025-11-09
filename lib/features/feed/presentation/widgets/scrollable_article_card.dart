@@ -47,10 +47,15 @@ class _ScrollableArticleCardState extends State<ScrollableArticleCard> {
   }
 
   void _onScroll() {
+    // Only report as scrolling if the user is actively dragging the content
+    // Not just when the scroll position changes slightly
     final isScrolling = _scrollController.position.isScrollingNotifier.value;
-    if (isScrolling != _isScrolling) {
-      setState(() => _isScrolling = isScrolling);
-      widget.onScrollingChanged?.call(isScrolling);
+    final hasScrolled = _scrollController.offset > 10; // Only if scrolled more than 10px
+    
+    final actuallyScrolling = isScrolling && hasScrolled;
+    if (actuallyScrolling != _isScrolling) {
+      setState(() => _isScrolling = actuallyScrolling);
+      widget.onScrollingChanged?.call(actuallyScrolling);
     }
   }
 

@@ -12,8 +12,9 @@ class HuggingFaceService {
   /// Generate embeddings for text using Hugging Face Inference API
   Future<List<double>> getEmbeddings(String text) async {
     try {
+      // Updated to NEW router endpoint (api-inference.huggingface.co is deprecated)
       final response = await http.post(
-        Uri.parse('https://api-inference.huggingface.co/pipeline/feature-extraction/$embeddingModel'),
+        Uri.parse('https://router.huggingface.co/hf-inference/models/$embeddingModel'),
         headers: {
           'Authorization': 'Bearer $apiKey',
           'Content-Type': 'application/json',
@@ -55,8 +56,9 @@ class HuggingFaceService {
   /// Batch generate embeddings for multiple texts
   Future<List<List<double>>> getBatchEmbeddings(List<String> texts) async {
     try {
+      // Updated to NEW router endpoint (api-inference.huggingface.co is deprecated)
       final response = await http.post(
-        Uri.parse('https://api-inference.huggingface.co/pipeline/feature-extraction/$embeddingModel'),
+        Uri.parse('https://router.huggingface.co/hf-inference/models/$embeddingModel'),
         headers: {
           'Authorization': 'Bearer $apiKey',
           'Content-Type': 'application/json',

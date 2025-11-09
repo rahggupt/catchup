@@ -62,7 +62,7 @@ Future<Map<String, int>> _getRealStats(SupabaseService service, String userId) a
   try {
     final client = SupabaseConfig.client;
     
-    // Count collections
+    // Count collections owned by the user
     final collectionsResponse = await client
         .from('collections')
         .select('id')
@@ -70,13 +70,29 @@ Future<Map<String, int>> _getRealStats(SupabaseService service, String userId) a
     final collectionsCount = (collectionsResponse as List).length;
     
     // Count articles in user's collections
-    final articlesResponse = await client
-        .from('collection_articles')
-        .select('id')
-        .inFilter('collection_id', collectionsResponse.map((c) => c['id']).toList());
-    final articlesCount = (articlesResponse as List).length;
+    int articlesCount = 0;
+    if (collectionsCount > 0) {
+      final collectionIds = collectionsResponse.map((c) => c['id']).toList();
+      try {
+        final articlesResponse = await client
+            .from('collection_articles')
+            .select('article_id')
+            .inFilter('collection_id', collectionIds);
+        
+        // Count unique article IDs
+        final uniqueArticleIds = <String>{};
+        for (final item in (articlesResponse as List)) {
+          if (item['article_id'] != null) {
+            uniqueArticleIds.add(item['article_id'].toString());
+          }
+        }
+        articlesCount = uniqueArticleIds.length;
+      } catch (e) {
+        print('Error counting articles: $e');
+      }
+    }
     
-    // Chats count (if you have a chats table)
+    // Count chats created by the user
     int chatsCount = 0;
     try {
       final chatsResponse = await client
@@ -89,7 +105,7 @@ Future<Map<String, int>> _getRealStats(SupabaseService service, String userId) a
       print('Chats table not found: $e');
     }
     
-    print('Real stats: collections=$collectionsCount, articles=$articlesCount, chats=$chatsCount');
+    print('✓ Real stats for user $userId: collections=$collectionsCount, articles=$articlesCount, chats=$chatsCount');
     
     return {
       'collections': collectionsCount,
@@ -97,7 +113,7 @@ Future<Map<String, int>> _getRealStats(SupabaseService service, String userId) a
       'chats': chatsCount,
     };
   } catch (e) {
-    print('Error getting real stats: $e');
+    print('✗ Error getting real stats: $e');
     return {'collections': 0, 'articles': 0, 'chats': 0};
   }
 }
@@ -119,12 +135,23 @@ final userSourcesProvider = FutureProvider.autoDispose<List<SourceModel>>((ref) 
     final supabaseService = ref.read(supabaseServiceProvider);
     final sources = await supabaseService.getUserSources(authUser.id);
     
+    // Remove duplicates by URL (client-side backup)
+    final uniqueSources = <String, SourceModel>{};
+    for (final source in sources) {
+      uniqueSources[source.url] = source; // Overwrites duplicates, keeping the last one
+    }
+    final dedupedSources = uniqueSources.values.toList();
+    
+    if (dedupedSources.length != sources.length) {
+      print('⚠️  Removed ${sources.length - dedupedSources.length} duplicate sources');
+    }
+    
     // If no sources, return mock sources for demo
-    if (sources.isEmpty) {
+    if (dedupedSources.isEmpty) {
       return MockDataService.getMockSources();
     }
     
-    return sources;
+    return dedupedSources;
   } catch (e) {
     print('Error loading sources: $e');
     return MockDataService.getMockSources();

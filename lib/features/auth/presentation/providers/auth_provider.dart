@@ -206,22 +206,21 @@ class AuthService {
   Future<void> _createDefaultCollections(String userId) async {
     final supabaseService = SupabaseService();
     final defaultCollections = [
-      {'name': 'Saved Articles', 'description': 'Articles saved for later reading'},
-      {'name': 'Read Later', 'description': 'Queue of articles to read'},
-      {'name': 'Favorites', 'description': 'Your favorite articles'},
+      'Saved Articles',
+      'Read Later',
+      'Favorites',
     ];
     
-    for (final collection in defaultCollections) {
+    for (final collectionName in defaultCollections) {
       try {
         await supabaseService.createCollection(
-          name: collection['name']!,
+          name: collectionName,
           ownerId: userId,
           privacy: 'private',
-          description: collection['description'],
         );
-        print('✓ Created default collection: ${collection['name']}');
+        print('✓ Created default collection: $collectionName');
       } catch (e) {
-        print('⚠️  Error creating default collection ${collection['name']}: $e');
+        print('⚠️  Error creating default collection $collectionName: $e');
         // Continue creating other collections even if one fails
       }
     }

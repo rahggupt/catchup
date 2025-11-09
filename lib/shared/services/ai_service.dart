@@ -92,8 +92,9 @@ Provide a helpful response based on your knowledge.''';
   /// Generate response using Gemini API
   Future<String> _generateGeminiResponse(String prompt) async {
     try {
+      // Using Gemini 2.0 Flash (Gemini 2.5 family) for better performance
       final response = await http.post(
-        Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=$geminiApiKey'),
+        Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=$geminiApiKey'),
         headers: {
           'Content-Type': 'application/json',
         },
