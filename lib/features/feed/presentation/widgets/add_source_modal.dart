@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/config/supabase_config.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../shared/services/supabase_service.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
-import '../providers/feed_provider.dart';
+import '../providers/rss_feed_provider.dart';
 
 class AddSourceModal extends ConsumerStatefulWidget {
   const AddSourceModal({super.key});
@@ -52,6 +53,25 @@ class _AddSourceModalState extends ConsumerState<AddSourceModal> {
       setState(() => _isLoading = true);
       
       try {
+        // Check if Supabase is initialized
+        final isSupabaseInitialized = AppConstants.supabaseUrl.isNotEmpty && 
+                                       AppConstants.supabaseAnonKey.isNotEmpty;
+        
+        if (!isSupabaseInitialized) {
+          // Mock mode - just show success
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Source "${_nameController.text}" added! (Mock Mode - Configure Supabase for real data)'),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+            Navigator.pop(context);
+          }
+          return;
+        }
+
         final user = SupabaseConfig.client.auth.currentUser;
         if (user == null) {
           throw Exception('User not logged in');
@@ -67,13 +87,13 @@ class _AddSourceModalState extends ConsumerState<AddSourceModal> {
 
         // Refresh the sources list and feed
         ref.invalidate(userSourcesProvider);
-        // Also refresh the feed to show articles from new source
+        // Force refresh the feed to show articles from new source
         ref.invalidate(feedArticlesProvider);
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Source "${_nameController.text}" added! Feed will refresh.'),
+              content: Text('Source "${_nameController.text}" added! Refreshing feed...'),
               backgroundColor: AppTheme.successGreen,
             ),
           );
@@ -83,8 +103,9 @@ class _AddSourceModalState extends ConsumerState<AddSourceModal> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Error adding source: $e'),
+              content: Text('Error: ${e.toString().replaceAll('Exception: ', '')}'),
               backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
             ),
           );
         }

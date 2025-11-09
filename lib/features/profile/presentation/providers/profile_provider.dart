@@ -10,7 +10,7 @@ import '../../../../shared/services/supabase_service.dart';
 final supabaseServiceProvider = Provider((ref) => SupabaseService());
 
 // Current logged-in user provider
-final profileUserProvider = FutureProvider<UserModel>((ref) async {
+final profileUserProvider = FutureProvider.autoDispose<UserModel>((ref) async {
   // Check if in mock mode
   if (AppConstants.supabaseUrl.isEmpty || AppConstants.supabaseAnonKey.isEmpty) {
     return MockDataService.getMockUser();
@@ -27,19 +27,29 @@ final profileUserProvider = FutureProvider<UserModel>((ref) async {
     
     // Get user profile from database
     final supabaseService = ref.read(supabaseServiceProvider);
-    final user = await supabaseService.getUser(authUser.id);
+    var user = await supabaseService.getUser(authUser.id);
     
-    if (user != null) {
-      return user;
+    if (user == null) {
+      // If user profile doesn't exist, create it
+      user = await supabaseService.createUser(
+        uid: authUser.id,
+        email: authUser.email!,
+        firstName: authUser.userMetadata?['first_name'] ?? authUser.email!.split('@')[0],
+        lastName: authUser.userMetadata?['last_name'] ?? '',
+        phoneNumber: authUser.userMetadata?['phone_number'],
+      );
     }
     
-    // If user profile doesn't exist, create it
-    return await supabaseService.createUser(
-      uid: authUser.id,
-      email: authUser.email!,
-      firstName: authUser.userMetadata?['first_name'] ?? 'User',
-      lastName: authUser.userMetadata?['last_name'] ?? 'Name',
-      phoneNumber: authUser.userMetadata?['phone_number'],
+    // Get REAL stats from database
+    final stats = await _getRealStats(supabaseService, authUser.id);
+    
+    // Update user with real stats
+    return user.copyWith(
+      stats: UserStats(
+        collections: stats['collections'] ?? 0,
+        articles: stats['articles'] ?? 0,
+        chats: stats['chats'] ?? 0,
+      ),
     );
   } catch (e) {
     print('Error loading user profile: $e');
@@ -47,8 +57,53 @@ final profileUserProvider = FutureProvider<UserModel>((ref) async {
   }
 });
 
+// Helper function to get real stats from database
+Future<Map<String, int>> _getRealStats(SupabaseService service, String userId) async {
+  try {
+    final client = SupabaseConfig.client;
+    
+    // Count collections
+    final collectionsResponse = await client
+        .from('collections')
+        .select('id')
+        .eq('owner_id', userId);
+    final collectionsCount = (collectionsResponse as List).length;
+    
+    // Count articles in user's collections
+    final articlesResponse = await client
+        .from('collection_articles')
+        .select('id')
+        .inFilter('collection_id', collectionsResponse.map((c) => c['id']).toList());
+    final articlesCount = (articlesResponse as List).length;
+    
+    // Chats count (if you have a chats table)
+    int chatsCount = 0;
+    try {
+      final chatsResponse = await client
+          .from('chats')
+          .select('id')
+          .eq('user_id', userId);
+      chatsCount = (chatsResponse as List).length;
+    } catch (e) {
+      // Chats table might not exist
+      print('Chats table not found: $e');
+    }
+    
+    print('Real stats: collections=$collectionsCount, articles=$articlesCount, chats=$chatsCount');
+    
+    return {
+      'collections': collectionsCount,
+      'articles': articlesCount,
+      'chats': chatsCount,
+    };
+  } catch (e) {
+    print('Error getting real stats: $e');
+    return {'collections': 0, 'articles': 0, 'chats': 0};
+  }
+}
+
 // User sources provider
-final userSourcesProvider = FutureProvider<List<SourceModel>>((ref) async {
+final userSourcesProvider = FutureProvider.autoDispose<List<SourceModel>>((ref) async {
   // Check if in mock mode
   if (AppConstants.supabaseUrl.isEmpty || AppConstants.supabaseAnonKey.isEmpty) {
     return MockDataService.getMockSources();

@@ -23,13 +23,34 @@ class SupabaseService {
   }
 
   Future<ArticleModel> createArticle(ArticleModel article) async {
-    final response = await _client
-        .from('articles')
-        .insert(article.toJson())
-        .select()
-        .single();
-    
-    return ArticleModel.fromJson(response);
+    try {
+      print('🔍 Checking if article exists: ${article.id}');
+      
+      // Check if article already exists
+      final existingResponse = await _client
+          .from('articles')
+          .select()
+          .eq('id', article.id)
+          .maybeSingle();
+      
+      if (existingResponse != null) {
+        print('✅ Article already exists, returning existing');
+        return ArticleModel.fromJson(existingResponse);
+      }
+      
+      print('💾 Creating new article in database');
+      final response = await _client
+          .from('articles')
+          .insert(article.toJson())
+          .select()
+          .single();
+      
+      print('✅ Article created successfully');
+      return ArticleModel.fromJson(response);
+    } catch (e) {
+      print('❌ Error creating article: $e');
+      rethrow;
+    }
   }
 
   // ===== Collections =====
@@ -153,6 +174,13 @@ class SupabaseService {
         .eq('id', sourceId);
   }
 
+  Future<void> deleteSource(String sourceId) async {
+    await _client
+        .from('sources')
+        .delete()
+        .eq('id', sourceId);
+  }
+
   // ===== Users =====
   
   Future<UserModel?> getUser(String uid) async {
@@ -220,14 +248,42 @@ class SupabaseService {
     required String articleId,
     required String addedBy,
   }) async {
-    await _client.from('collection_articles').insert({
-      'collection_id': collectionId,
-      'article_id': articleId,
-      'added_by': addedBy,
-    });
-    
-    // Update user stats - increment articles count
-    await _incrementUserStat(addedBy, 'articles');
+    try {
+      print('🔍 Checking if article is already in collection');
+      
+      // Check if already exists
+      final existing = await _client
+          .from('collection_articles')
+          .select()
+          .eq('collection_id', collectionId)
+          .eq('article_id', articleId)
+          .maybeSingle();
+      
+      if (existing != null) {
+        print('⚠️ Article already in collection, skipping');
+        return;
+      }
+      
+      print('💾 Adding article to collection');
+      print('   Collection ID: $collectionId');
+      print('   Article ID: $articleId');
+      print('   Added By: $addedBy');
+      
+      await _client.from('collection_articles').insert({
+        'collection_id': collectionId,
+        'article_id': articleId,
+        'added_by': addedBy,
+      });
+      
+      print('✅ Article added to collection successfully');
+      
+      // Update user stats - increment articles count
+      await _incrementUserStat(addedBy, 'articles');
+    } catch (e) {
+      print('❌ Error adding article to collection: $e');
+      print('   Error details: ${e.toString()}');
+      rethrow;
+    }
   }
 
   Future<List<ArticleModel>> getCollectionArticles(String collectionId) async {

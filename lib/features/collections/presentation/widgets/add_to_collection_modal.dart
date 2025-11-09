@@ -40,8 +40,8 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
       final user = SupabaseConfig.client.auth.currentUser;
       if (user == null) throw Exception('User not logged in');
 
-      // Check if article ID is valid UUID (not mock data)
-      final isArticleMock = !widget.article.id.contains('-') || widget.article.id.length < 10;
+      // Check if article ID is valid (mock IDs are just numbers like "1", "2", etc.)
+      final isArticleMock = !widget.article.id.contains('-') && widget.article.id.length < 5;
       
       if (isArticleMock) {
         // Mock article - just show success without saving to DB
@@ -72,8 +72,8 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
         );
         collectionId = newCollection.id;
       } else {
-        // Check if collection ID is valid
-        final isCollectionMock = !selectedCollectionId!.contains('-') || selectedCollectionId!.length < 10;
+        // Check if collection ID is valid (mock IDs are just numbers like "1", "2", etc.)
+        final isCollectionMock = !selectedCollectionId!.contains('-') && selectedCollectionId!.length < 5;
         if (isCollectionMock) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -91,29 +91,35 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
       }
 
       // First, save the article to database (if not already there)
+      print('💾 Saving article to database: ${widget.article.id}');
       try {
         await supabaseService.createArticle(widget.article);
+        print('✅ Article saved successfully');
       } catch (e) {
         // Article might already exist, that's OK
-        print('Article might already exist: $e');
+        print('⚠️ Article might already exist: $e');
       }
       
       // Add article to collection
+      print('📚 Adding article to collection: $collectionId');
       await supabaseService.addArticleToCollection(
         collectionId: collectionId,
         articleId: widget.article.id,
         addedBy: user.id,
       );
+      print('✅ Article added to collection successfully');
 
       // Refresh collections and profile stats
+      print('🔄 Refreshing collections and profile stats');
       ref.invalidate(userCollectionsProvider);
       ref.invalidate(profileUserProvider);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Article added to collection! Stats updated.'),
+            content: Text('Article added to collection! Refreshing stats...'),
             backgroundColor: AppTheme.successGreen,
+            duration: Duration(seconds: 2),
           ),
         );
         Navigator.pop(context);
@@ -138,13 +144,17 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
   Widget build(BuildContext context) {
     final collectionsAsync = ref.watch(userCollectionsProvider);
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.7,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
+    return DraggableScrollableSheet(
+      initialChildSize: 0.75,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
         children: [
           // Header
           Container(
@@ -178,13 +188,15 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
                 child: Text('Error loading collections: $error'),
               ),
               data: (collections) {
-                return SingleChildScrollView(
+                return ListView(
+                  controller: scrollController,
                   padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Article Preview
-                      Container(
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Article Preview
+                        Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: AppTheme.backgroundLight,
@@ -234,150 +246,151 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
                             ),
                           ],
                         ),
-                      ),
-                      const SizedBox(height: 24),
+                        ),
+                        const SizedBox(height: 24),
 
-                      // Create New Collection
-                      if (_showCreateNew) ...[
-                        TextField(
-                          controller: _newCollectionController,
-                          decoration: const InputDecoration(
-                            labelText: 'Collection Name',
-                            hintText: 'e.g., AI Research',
+                        // Create New Collection
+                        if (_showCreateNew) ...[
+                          TextField(
+                            controller: _newCollectionController,
+                            decoration: const InputDecoration(
+                              labelText: 'Collection Name',
+                              hintText: 'e.g., AI Research',
+                            ),
+                            autofocus: true,
                           ),
-                          autofocus: true,
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            setState(() {
-                              _showCreateNew = false;
-                              _newCollectionController.clear();
-                            });
-                          },
-                          child: const Text('Cancel'),
-                        ),
-                      ] else ...[
-                        // Create New Button
-                        OutlinedButton.icon(
-                          onPressed: () {
-                            setState(() => _showCreateNew = true);
-                          },
-                          icon: const Icon(Icons.add),
-                          label: const Text('Create New Collection'),
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size(double.infinity, 48),
+                          TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _showCreateNew = false;
+                                _newCollectionController.clear();
+                              });
+                            },
+                            child: const Text('Cancel'),
                           ),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Existing Collections
-                        if (collections.isNotEmpty) ...[
-                          const Text(
-                            'Your Collections',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
+                        ] else ...[
+                          // Create New Button
+                          OutlinedButton.icon(
+                            onPressed: () {
+                              setState(() => _showCreateNew = true);
+                            },
+                            icon: const Icon(Icons.add),
+                            label: const Text('Create New Collection'),
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size(double.infinity, 48),
                             ),
                           ),
-                          const SizedBox(height: 12),
-                          ...collections.map((collection) {
-                            final isSelected = selectedCollectionId == collection.id;
-                            return GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  selectedCollectionId = collection.id;
-                                });
-                              },
-                              child: Container(
-                                margin: const EdgeInsets.only(bottom: 12),
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: isSelected
-                                      ? AppTheme.primaryBlue.withOpacity(0.1)
-                                      : AppTheme.backgroundLight,
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
+                          const SizedBox(height: 16),
+
+                          // Existing Collections
+                          if (collections.isNotEmpty) ...[
+                            const Text(
+                              'Your Collections',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            ...collections.map((collection) {
+                              final isSelected = selectedCollectionId == collection.id;
+                              return GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    selectedCollectionId = collection.id;
+                                  });
+                                },
+                                child: Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
                                     color: isSelected
-                                        ? AppTheme.primaryBlue
-                                        : Colors.transparent,
-                                    width: 2,
+                                        ? AppTheme.primaryBlue.withOpacity(0.1)
+                                        : AppTheme.backgroundLight,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? AppTheme.primaryBlue
+                                          : Colors.transparent,
+                                      width: 2,
+                                    ),
                                   ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    if (collection.preview != null)
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: Image.network(
-                                          collection.preview!,
-                                          width: 50,
-                                          height: 50,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) => Container(
+                                  child: Row(
+                                    children: [
+                                      if (collection.preview != null)
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: Image.network(
+                                            collection.preview!,
                                             width: 50,
                                             height: 50,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) => Container(
+                                              width: 50,
+                                              height: 50,
+                                              color: AppTheme.borderGray,
+                                              child: const Icon(Icons.folder),
+                                            ),
+                                          ),
+                                        )
+                                      else
+                                        Container(
+                                          width: 50,
+                                          height: 50,
+                                          decoration: BoxDecoration(
                                             color: AppTheme.borderGray,
-                                            child: const Icon(Icons.folder),
+                                            borderRadius: BorderRadius.circular(8),
                                           ),
+                                          child: const Icon(Icons.folder),
                                         ),
-                                      )
-                                    else
-                                      Container(
-                                        width: 50,
-                                        height: 50,
-                                        decoration: BoxDecoration(
-                                          color: AppTheme.borderGray,
-                                          borderRadius: BorderRadius.circular(8),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              collection.name,
+                                              style: const TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            Text(
+                                              '${collection.stats.articleCount} articles · ${collection.privacy}',
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: AppTheme.textGray,
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                        child: const Icon(Icons.folder),
                                       ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            collection.name,
-                                            style: const TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                          Text(
-                                            '${collection.stats.articleCount} articles · ${collection.privacy}',
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                              color: AppTheme.textGray,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    if (isSelected)
-                                      const Icon(
-                                        Icons.check_circle,
-                                        color: AppTheme.primaryBlue,
-                                      ),
-                                  ],
+                                      if (isSelected)
+                                        const Icon(
+                                          Icons.check_circle,
+                                          color: AppTheme.primaryBlue,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }),
+                          ] else ...[
+                            const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(32.0),
+                                child: Text(
+                                  'No collections yet.\nCreate one to get started!',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: AppTheme.textGray),
                                 ),
                               ),
-                            );
-                          }),
-                        ] else ...[
-                          const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(32.0),
-                              child: Text(
-                                'No collections yet.\nCreate one to get started!',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: AppTheme.textGray),
-                              ),
                             ),
-                          ),
+                          ],
                         ],
                       ],
-                    ],
-                  ),
+                    ),
+                  ],
                 );
               },
             ),
@@ -407,6 +420,8 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
           ),
         ],
       ),
+        );
+      },
     );
   }
 }

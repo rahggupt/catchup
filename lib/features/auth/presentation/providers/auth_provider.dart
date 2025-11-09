@@ -100,10 +100,33 @@ class AuthService {
       return null; // null means success in mock mode
     }
     
-    return await SupabaseConfig.client.auth.signInWithPassword(
-      email: email,
-      password: password,
-    );
+    try {
+      print('🔐 Attempting login for: $email');
+      
+      final response = await SupabaseConfig.client.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+      
+      print('✅ Login successful!');
+      return response;
+    } catch (e) {
+      print('❌ Login failed: $e');
+      
+      // Parse error message for better user feedback
+      final errorMessage = e.toString();
+      if (errorMessage.contains('Invalid login credentials')) {
+        throw Exception('Invalid email or password. Please check your credentials.');
+      } else if (errorMessage.contains('Email not confirmed')) {
+        throw Exception('Please confirm your email. Check your inbox for the confirmation link.');
+      } else if (errorMessage.contains('Email link is invalid or has expired')) {
+        throw Exception('This link has expired. Please request a new one.');
+      } else if (errorMessage.contains('User not found')) {
+        throw Exception('No account found with this email. Please sign up first.');
+      } else {
+        throw Exception('Login failed: ${errorMessage}');
+      }
+    }
   }
   
   // Sign in with Google

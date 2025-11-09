@@ -7,6 +7,7 @@ class SourceModel extends Equatable {
   final String url;
   final List<String> topics;
   final bool active;
+  final int? articleCount; // Number of articles to fetch per source (default 5)
   final DateTime addedAt;
   
   const SourceModel({
@@ -16,6 +17,7 @@ class SourceModel extends Equatable {
     required this.url,
     required this.topics,
     required this.active,
+    this.articleCount = 5,
     required this.addedAt,
   });
   
@@ -30,6 +32,7 @@ class SourceModel extends Equatable {
               .toList() ??
           [],
       active: json['active'] as bool? ?? true,
+      articleCount: json['article_count'] as int? ?? 5,
       addedAt: DateTime.parse(json['added_at'] as String),
     );
   }
@@ -42,6 +45,7 @@ class SourceModel extends Equatable {
       'url': url,
       'topics': topics,
       'active': active,
+      'article_count': articleCount ?? 5,
       'added_at': addedAt.toIso8601String(),
     };
   }
@@ -53,6 +57,7 @@ class SourceModel extends Equatable {
     String? url,
     List<String>? topics,
     bool? active,
+    int? articleCount,
     DateTime? addedAt,
   }) {
     return SourceModel(
@@ -62,11 +67,12 @@ class SourceModel extends Equatable {
       url: url ?? this.url,
       topics: topics ?? this.topics,
       active: active ?? this.active,
+      articleCount: articleCount ?? this.articleCount,
       addedAt: addedAt ?? this.addedAt,
     );
   }
   
   @override
-  List<Object?> get props => [id, userId, name, url, topics, active, addedAt];
+  List<Object?> get props => [id, userId, name, url, topics, active, articleCount, addedAt];
 }
 
