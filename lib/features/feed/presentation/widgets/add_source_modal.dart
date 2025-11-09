@@ -100,12 +100,16 @@ class _AddSourceModalState extends ConsumerState<AddSourceModal> {
           Navigator.pop(context);
         }
       } catch (e) {
+        // Log technical error for debugging
+        print('❌ Error adding source: $e');
+        
         if (mounted) {
+          // Show user-friendly error message
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: ${e.toString().replaceAll('Exception: ', '')}'),
+            const SnackBar(
+              content: Text('Unable to add source. Please try again.'),
               backgroundColor: Colors.red,
-              duration: const Duration(seconds: 4),
+              duration: Duration(seconds: 3),
             ),
           );
         }
@@ -179,9 +183,18 @@ class _AddSourceModalState extends ConsumerState<AddSourceModal> {
                       runSpacing: 8,
                       children: _suggestedSources.map((source) {
                         return ActionChip(
-                          label: Text(source['name']!),
+                          label: Text(
+                            source['name']!,
+                            style: const TextStyle(
+                              color: AppTheme.textDark,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                           onPressed: () => _selectSuggestedSource(source),
-                          backgroundColor: AppTheme.backgroundLight,
+                          backgroundColor: Colors.white,
+                          side: const BorderSide(color: AppTheme.borderGray),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         );
                       }).toList(),
                     ),

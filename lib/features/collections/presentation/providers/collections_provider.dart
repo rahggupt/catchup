@@ -25,11 +25,7 @@ final userCollectionsProvider = FutureProvider<List<CollectionModel>>((ref) asyn
     final supabaseService = ref.read(supabaseServiceProvider);
     final collections = await supabaseService.getUserCollections(authUser.id);
     
-    // If no collections, return mock collections for demo
-    if (collections.isEmpty) {
-      return MockDataService.getMockCollections();
-    }
-    
+    // Return real collections (including default ones created on signup)
     return collections;
   } catch (e) {
     print('Error loading collections: $e');

@@ -44,6 +44,18 @@ class RssFeedNotifier extends StateNotifier<AsyncValue<List<ArticleModel>>> {
       },
       fireImmediately: true,
     );
+    
+    // Watch topic filter and reload when it changes
+    _ref.listen<String?>(
+      selectedTopicFilterProvider,
+      (previous, next) {
+        if (previous != next) {
+          print('🔄 Topic filter changed! New topic: ${next ?? "All Sources"}');
+          // Clear cache and reload immediately
+          _cacheService.clearCache().then((_) => _loadArticles());
+        }
+      },
+    );
   }
 
   /// Load articles with caching strategy
@@ -92,10 +104,26 @@ class RssFeedNotifier extends StateNotifier<AsyncValue<List<ArticleModel>>> {
     await sourcesAsync.when(
       data: (sources) async {
         // Get only active sources
-        final activeSources = sources.where((s) => s.active).toList();
+        var activeSources = sources.where((s) => s.active).toList();
+        
+        // Apply topic filter if selected
+        final selectedTopic = _ref.read(selectedTopicFilterProvider);
+        if (selectedTopic != null) {
+          if (selectedTopic == 'friends') {
+            // Filter to sources added by friends (not current user)
+            // For now, show all sources as we don't track who added them yet
+            print('Friends filter selected (showing all for now)');
+          } else {
+            // Filter by topic
+            activeSources = activeSources.where((source) {
+              return source.topics != null && source.topics!.contains(selectedTopic);
+            }).toList();
+            print('Filtered to ${activeSources.length} sources with topic: $selectedTopic');
+          }
+        }
         
         if (activeSources.isEmpty) {
-          print('No active sources, showing empty state');
+          print('No active sources matching filter, showing empty state');
           state = const AsyncValue.data([]);
           return;
         }
@@ -191,6 +219,9 @@ class RssFeedNotifier extends StateNotifier<AsyncValue<List<ArticleModel>>> {
 
 // Client-side time filter
 final selectedTimeFilterProvider = StateProvider<String>((ref) => 'All');
+
+// Topic filter provider
+final selectedTopicFilterProvider = StateProvider<String?>((ref) => null);
 
 // Filtered articles based on time
 final filteredArticlesProvider = Provider<AsyncValue<List<ArticleModel>>>((ref) {

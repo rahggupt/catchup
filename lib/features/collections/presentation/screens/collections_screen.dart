@@ -7,6 +7,7 @@ import '../../../../shared/models/collection_model.dart';
 import '../../../../shared/services/supabase_service.dart';
 import '../providers/collections_provider.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
+import '../widgets/collection_privacy_modal.dart';
 
 class CollectionsScreen extends ConsumerWidget {
   const CollectionsScreen({super.key});
@@ -109,6 +110,120 @@ class _CollectionCard extends ConsumerWidget {
 
   const _CollectionCard({required this.collection});
 
+  void _shareCollection(BuildContext context) {
+    // Show share options dialog
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Share "${collection.name}"'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Sharing features require database setup.',
+              style: TextStyle(color: AppTheme.textGray),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Privacy: ${collection.privacyLabel}',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'To enable sharing:\n'
+              '1. Run collection_sharing_schema.sql in Supabase\n'
+              '2. Collection sharing features will then be available',
+              style: TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _editCollection(BuildContext context, WidgetRef ref) {
+    // Show edit dialog
+    final nameController = TextEditingController(text: collection.name);
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Collection'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Collection Name',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'More edit options coming soon!',
+              style: TextStyle(fontSize: 12, color: AppTheme.textGray),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final newName = nameController.text.trim();
+              if (newName.isEmpty) return;
+              
+              try {
+                final supabaseService = SupabaseService();
+                // For now, just show a message since full edit isn't implemented
+                Navigator.pop(context);
+                
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Collection update coming soon!'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Unable to update collection.'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPrivacySettings(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => CollectionPrivacyModal(
+        collection: collection,
+      ),
+    );
+  }
+
   Future<void> _deleteCollection(BuildContext context, WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -202,9 +317,25 @@ class _CollectionCard extends ConsumerWidget {
                       onSelected: (value) {
                         if (value == 'delete') {
                           _deleteCollection(context, ref);
+                        } else if (value == 'share') {
+                          _shareCollection(context);
+                        } else if (value == 'edit') {
+                          _editCollection(context, ref);
+                        } else if (value == 'privacy') {
+                          _showPrivacySettings(context);
                         }
                       },
                       itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'privacy',
+                          child: Row(
+                            children: [
+                              Icon(Icons.lock, size: 18),
+                              SizedBox(width: 12),
+                              Text('Privacy Settings'),
+                            ],
+                          ),
+                        ),
                         const PopupMenuItem(
                           value: 'share',
                           child: Row(

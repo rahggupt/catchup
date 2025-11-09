@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../features/feed/presentation/screens/swipe_feed_screen.dart';
 import '../../features/collections/presentation/screens/collections_screen.dart';
-import '../../features/ai_chat/presentation/screens/enhanced_ai_chat_screen.dart';
+import '../../features/ai_chat/presentation/screens/ai_chat_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
 
 class MainNavigation extends StatefulWidget {
@@ -17,7 +17,7 @@ class _MainNavigationState extends State<MainNavigation> {
   final List<Widget> _screens = const [
     SwipeFeedScreen(),
     CollectionsScreen(),
-    EnhancedAiChatScreen(),
+    AiChatScreen(),
     ProfileScreen(),
   ];
 

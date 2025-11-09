@@ -324,5 +324,214 @@ class SupabaseService {
       'citations': citations ?? [],
     });
   }
+
+  // ===== Collection Sharing & Privacy =====
+  
+  /// Generate a shareable link for a collection
+  Future<String> generateShareableLink(String collectionId) async {
+    try {
+      // Call the database function to generate a unique token
+      final response = await _client
+          .rpc('generate_shareable_token')
+          .select()
+          .single();
+      
+      final token = response as String;
+      
+      // Update the collection with the token and enable sharing
+      await _client
+          .from('collections')
+          .update({
+            'shareable_token': token,
+            'share_enabled': true,
+          })
+          .eq('id', collectionId);
+      
+      return token;
+    } catch (e) {
+      print('❌ Error generating shareable link: $e');
+      rethrow;
+    }
+  }
+
+  /// Disable sharing for a collection
+  Future<void> disableSharing(String collectionId) async {
+    try {
+      await _client
+          .from('collections')
+          .update({
+            'share_enabled': false,
+          })
+          .eq('id', collectionId);
+    } catch (e) {
+      print('❌ Error disabling sharing: $e');
+      rethrow;
+    }
+  }
+
+  /// Update collection privacy setting
+  Future<void> updateCollectionPrivacy(
+    String collectionId, 
+    String privacy,
+  ) async {
+    try {
+      await _client
+          .from('collections')
+          .update({'privacy': privacy})
+          .eq('id', collectionId);
+    } catch (e) {
+      print('❌ Error updating collection privacy: $e');
+      rethrow;
+    }
+  }
+
+  /// Add a member to a collection
+  Future<void> addCollectionMember({
+    required String collectionId,
+    required String userId,
+    required String role,
+    String? invitedBy,
+  }) async {
+    try {
+      await _client.from('collection_members').insert({
+        'collection_id': collectionId,
+        'user_id': userId,
+        'role': role,
+        'invited_by': invitedBy,
+      });
+    } catch (e) {
+      print('❌ Error adding collection member: $e');
+      rethrow;
+    }
+  }
+
+  /// Remove a member from a collection
+  Future<void> removeCollectionMember({
+    required String collectionId,
+    required String userId,
+  }) async {
+    try {
+      await _client
+          .from('collection_members')
+          .delete()
+          .eq('collection_id', collectionId)
+          .eq('user_id', userId);
+    } catch (e) {
+      print('❌ Error removing collection member: $e');
+      rethrow;
+    }
+  }
+
+  /// Get all members of a collection
+  Future<List<Map<String, dynamic>>> getCollectionMembers(
+    String collectionId,
+  ) async {
+    try {
+      final response = await _client
+          .from('collection_members')
+          .select('*, user:users!user_id(email, raw_user_meta_data)')
+          .eq('collection_id', collectionId)
+          .order('joined_at', ascending: false);
+      
+      return List<Map<String, dynamic>>.from(response as List);
+    } catch (e) {
+      print('❌ Error getting collection members: $e');
+      rethrow;
+    }
+  }
+
+  /// Send an invite to join a collection
+  Future<void> sendCollectionInvite({
+    required String collectionId,
+    required String inviterId,
+    required String inviteeEmail,
+    DateTime? expiresAt,
+  }) async {
+    try {
+      await _client.from('collection_invites').insert({
+        'collection_id': collectionId,
+        'inviter_id': inviterId,
+        'invitee_email': inviteeEmail,
+        'expires_at': expiresAt?.toIso8601String(),
+      });
+    } catch (e) {
+      print('❌ Error sending collection invite: $e');
+      rethrow;
+    }
+  }
+
+  /// Accept a collection invite
+  Future<void> acceptCollectionInvite(String inviteId) async {
+    try {
+      await _client.rpc('accept_collection_invite', params: {
+        'invite_id': inviteId,
+      });
+    } catch (e) {
+      print('❌ Error accepting collection invite: $e');
+      rethrow;
+    }
+  }
+
+  /// Get pending invites for the current user
+  Future<List<Map<String, dynamic>>> getPendingInvites() async {
+    try {
+      final user = _client.auth.currentUser;
+      if (user == null) throw Exception('User not logged in');
+      
+      final response = await _client
+          .from('collection_invites')
+          .select('*, collection:collections(name), inviter:users!inviter_id(email)')
+          .eq('invitee_email', user.email!)
+          .eq('status', 'pending')
+          .order('created_at', ascending: false);
+      
+      return List<Map<String, dynamic>>.from(response as List);
+    } catch (e) {
+      print('❌ Error getting pending invites: $e');
+      rethrow;
+    }
+  }
+
+  /// Check if user has access to a collection
+  Future<bool> userHasCollectionAccess({
+    required String userId,
+    required String collectionId,
+  }) async {
+    try {
+      // Check if user owns the collection
+      final collectionResponse = await _client
+          .from('collections')
+          .select()
+          .eq('id', collectionId)
+          .eq('owner_id', userId)
+          .maybeSingle();
+      
+      if (collectionResponse != null) return true;
+      
+      // Check if user is a member
+      final memberResponse = await _client
+          .from('collection_members')
+          .select()
+          .eq('collection_id', collectionId)
+          .eq('user_id', userId)
+          .maybeSingle();
+      
+      if (memberResponse != null) return true;
+      
+      // Check if collection is public with sharing enabled
+      final publicResponse = await _client
+          .from('collections')
+          .select()
+          .eq('id', collectionId)
+          .eq('privacy', 'public')
+          .eq('share_enabled', true)
+          .maybeSingle();
+      
+      return publicResponse != null;
+    } catch (e) {
+      print('❌ Error checking collection access: $e');
+      return false;
+    }
+  }
 }
 

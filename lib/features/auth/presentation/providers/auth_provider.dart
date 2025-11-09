@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/config/supabase_config.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../shared/models/user_model.dart';
+import '../../../../shared/services/supabase_service.dart';
 
 // Auth state provider
 final authStateProvider = StreamProvider<User?>((ref) {
@@ -85,6 +86,9 @@ class AuthService {
         lastName: lastName,
         phoneNumber: phoneNumber,
       );
+      
+      // Create default collections for new user
+      await _createDefaultCollections(response.user!.id);
     }
     
     return response;
@@ -196,6 +200,31 @@ class AuthService {
       },
       'created_at': DateTime.now().toIso8601String(),
     });
+  }
+  
+  // Create default collections for new user
+  Future<void> _createDefaultCollections(String userId) async {
+    final supabaseService = SupabaseService();
+    final defaultCollections = [
+      {'name': 'Saved Articles', 'description': 'Articles saved for later reading'},
+      {'name': 'Read Later', 'description': 'Queue of articles to read'},
+      {'name': 'Favorites', 'description': 'Your favorite articles'},
+    ];
+    
+    for (final collection in defaultCollections) {
+      try {
+        await supabaseService.createCollection(
+          name: collection['name']!,
+          ownerId: userId,
+          privacy: 'private',
+          description: collection['description'],
+        );
+        print('✓ Created default collection: ${collection['name']}');
+      } catch (e) {
+        print('⚠️  Error creating default collection ${collection['name']}: $e');
+        // Continue creating other collections even if one fails
+      }
+    }
   }
 }
 

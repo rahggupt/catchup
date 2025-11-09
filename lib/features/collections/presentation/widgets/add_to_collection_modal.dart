@@ -63,30 +63,34 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
       String collectionId;
 
       if (_showCreateNew) {
-        // Create new collection
-        final newCollection = await supabaseService.createCollection(
-          name: _newCollectionController.text.trim(),
-          ownerId: user.id,
-          privacy: 'private',
-          preview: widget.article.imageUrl,
-        );
-        collectionId = newCollection.id;
-      } else {
-        // Check if collection ID is valid (mock IDs are just numbers like "1", "2", etc.)
-        final isCollectionMock = !selectedCollectionId!.contains('-') && selectedCollectionId!.length < 5;
-        if (isCollectionMock) {
+        // Validate collection name
+        final collectionName = _newCollectionController.text.trim();
+        if (collectionName.isEmpty) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Cannot add to mock collection. Please create a new collection first.'),
+                content: Text('Please enter a collection name.'),
                 backgroundColor: Colors.orange,
-                duration: Duration(seconds: 3),
+                duration: Duration(seconds: 2),
               ),
             );
           }
           setState(() => _isLoading = false);
           return;
         }
+        
+        // Create new collection
+        print('📝 Creating new collection: $collectionName');
+        final newCollection = await supabaseService.createCollection(
+          name: collectionName,
+          ownerId: user.id,
+          privacy: 'private',
+          preview: widget.article.imageUrl,
+        );
+        collectionId = newCollection.id;
+        print('✅ Collection created: ${newCollection.id}');
+      } else {
+        // Use the selected collection (all real collections have UUID format)
         collectionId = selectedCollectionId!;
       }
 
@@ -125,11 +129,16 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
         Navigator.pop(context);
       }
     } catch (e) {
+      // Log technical error for debugging
+      print('❌ Error saving article to collection: $e');
+      
       if (mounted) {
+        // Show user-friendly error message
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
+          const SnackBar(
+            content: Text('Unable to save article. Please try again.'),
             backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
           ),
         );
       }

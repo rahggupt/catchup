@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
@@ -18,12 +17,27 @@ class SwipeFeedScreen extends ConsumerStatefulWidget {
   ConsumerState<SwipeFeedScreen> createState() => _SwipeFeedScreenState();
 }
 
-class _SwipeFeedScreenState extends ConsumerState<SwipeFeedScreen> {
-  final CardSwiperController _swiperController = CardSwiperController();
+class _SwipeFeedScreenState extends ConsumerState<SwipeFeedScreen> 
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  double _dragX = 0;
+  double _dragY = 0;
+  bool _isDragging = false;
+  bool _isContentScrolling = false;
+  final double _minDragThreshold = 30.0; // 30px dead zone
+  
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+  }
   
   @override
   void dispose() {
-    _swiperController.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
@@ -65,6 +79,189 @@ Shared via CatchUp
     } catch (e) {
       print('✗ Error sharing article: $e');
     }
+  }
+
+  void _openAskAIWithArticle(BuildContext context, ArticleModel article) {
+    // Navigate to AI Chat screen with article context
+    // The AI will use RAG to answer questions about this specific article
+    Navigator.of(context).pushNamed(
+      '/ai-chat',
+      arguments: {
+        'article': article,
+        'mode': 'rag', // RAG mode without collection selection
+      },
+    );
+  }
+
+  void _onPanUpdate(DragUpdateDetails details) {
+    // Don't allow horizontal swipe if content is scrolling
+    if (_isContentScrolling) {
+      return;
+    }
+    
+    final newDragX = _dragX + details.delta.dx;
+    final newDragY = _dragY + details.delta.dy;
+    
+    // Only update if moved more than min threshold or already dragging
+    if (newDragX.abs() > _minDragThreshold || newDragY.abs() > _minDragThreshold || _isDragging) {
+      setState(() {
+        _dragX = newDragX;
+        _dragY = newDragY;
+        _isDragging = true;
+      });
+    }
+  }
+
+  void _onPanEnd(DragEndDetails details, List<ArticleModel> articles) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final threshold = screenWidth * 0.2; // 20% of screen width
+    final velocityThreshold = 300.0;
+    final velocity = details.velocity.pixelsPerSecond;
+    final currentIndex = ref.read(currentArticleIndexProvider);
+    
+    if (currentIndex >= articles.length) {
+      _resetPosition();
+      return;
+    }
+
+    final article = articles[currentIndex];
+
+    // Check velocity for quick swipes
+    if (velocity.dx.abs() > velocityThreshold && _dragX.abs() > _minDragThreshold) {
+      if (velocity.dx > 0) {
+        _handleRightSwipe(article);
+      } else {
+        _handleLeftSwipe();
+      }
+      return;
+    }
+    
+    // Check distance for deliberate swipes
+    if (_dragX.abs() > threshold) {
+      // Right or Left swipe
+      if (_dragX > 0) {
+        _handleRightSwipe(article);
+      } else {
+        _handleLeftSwipe();
+      }
+    } else if (_dragY.abs() > threshold) {
+      // Up or Down swipe
+      if (_dragY < 0) {
+        _handleUpSwipe();
+      } else {
+        _handleDownSwipe();
+      }
+    } else {
+      // Return to center with elastic bounce and haptic feedback
+      HapticFeedback.lightImpact();
+      _resetPosition();
+    }
+  }
+
+  void _handleRightSwipe(ArticleModel article) {
+    print('✓ Swiped RIGHT - Saving article: ${article.title}');
+    HapticFeedback.mediumImpact();
+    
+    // Animate off screen
+    _animateOffScreen(true, () {
+      _moveToNextArticle();
+      // Show modal after a brief delay
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (context.mounted) {
+          _showSaveToCollectionModal(context, article);
+        }
+      });
+    });
+  }
+
+  void _handleLeftSwipe() {
+    print('✗ Swiped LEFT - Skipping article');
+    HapticFeedback.lightImpact();
+    
+    // Animate off screen
+    _animateOffScreen(false, () {
+      _moveToNextArticle();
+    });
+  }
+
+  void _handleUpSwipe() {
+    print('↑ Swiped UP - Next article');
+    HapticFeedback.selectionClick();
+    
+    _animateOffScreen(false, () {
+      _moveToNextArticle();
+    });
+  }
+
+  void _handleDownSwipe() {
+    print('↓ Swiped DOWN - Previous article');
+    final currentIndex = ref.read(currentArticleIndexProvider);
+    if (currentIndex > 0) {
+      HapticFeedback.selectionClick();
+      _resetPosition();
+      ref.read(currentArticleIndexProvider.notifier).state = currentIndex - 1;
+    } else {
+      _resetPosition();
+    }
+  }
+
+  void _moveToNextArticle() {
+    final currentIndex = ref.read(currentArticleIndexProvider);
+    ref.read(currentArticleIndexProvider.notifier).state = currentIndex + 1;
+  }
+
+  void _animateOffScreen(bool right, VoidCallback onComplete) {
+    final targetX = right ? 500.0 : -500.0;
+    
+    final animation = Tween<double>(
+      begin: _dragX,
+      end: targetX,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    ));
+
+    animation.addListener(() {
+      setState(() {
+        _dragX = animation.value;
+      });
+    });
+
+    _controller.forward().then((_) {
+      setState(() {
+        _dragX = 0;
+        _dragY = 0;
+        _isDragging = false;
+      });
+      _controller.reset();
+      onComplete();
+    });
+  }
+
+  void _resetPosition() {
+    final animation = Tween<Offset>(
+      begin: Offset(_dragX, _dragY),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.elasticOut,
+    ));
+
+    animation.addListener(() {
+      setState(() {
+        _dragX = animation.value.dx;
+        _dragY = animation.value.dy;
+      });
+    });
+
+    _controller.forward().then((_) {
+      setState(() {
+        _dragX = 0;
+        _dragY = 0;
+        _isDragging = false;
+      });
+      _controller.reset();
+    });
   }
 
   @override
@@ -121,6 +318,60 @@ Shared via CatchUp
                         ],
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // Topic Filter Chips
+                  SizedBox(
+                    height: 40,
+                    child: Consumer(
+                      builder: (context, topicRef, _) {
+                        final selectedTopic = topicRef.watch(selectedTopicFilterProvider);
+                        final topics = ['All Sources', 'Friends\' Adds', 'Tech', 'Science', 'AI', 'Politics', 'Business', 'Health', 'Climate', 'Innovation'];
+                        
+                        return ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: topics.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 8),
+                          itemBuilder: (context, index) {
+                            final topic = topics[index];
+                            final isSelected = (selectedTopic == null && topic == 'All Sources') ||
+                                             (selectedTopic == 'friends' && topic == 'Friends\' Adds') ||
+                                             (selectedTopic == topic && topic != 'All Sources' && topic != 'Friends\' Adds');
+                            
+                            return FilterChip(
+                              label: Text(topic),
+                              selected: isSelected,
+                              onSelected: (_) {
+                                if (topic == 'All Sources') {
+                                  topicRef.read(selectedTopicFilterProvider.notifier).state = null;
+                                } else if (topic == 'Friends\' Adds') {
+                                  topicRef.read(selectedTopicFilterProvider.notifier).state = 'friends';
+                                } else {
+                                  topicRef.read(selectedTopicFilterProvider.notifier).state = topic;
+                                }
+                                topicRef.read(currentArticleIndexProvider.notifier).state = 0;
+                              },
+                              backgroundColor: isSelected 
+                                  ? AppTheme.primaryBlue 
+                                  : Colors.white,
+                              selectedColor: AppTheme.primaryBlue,
+                              side: BorderSide(
+                                color: isSelected ? AppTheme.primaryBlue : AppTheme.borderGray,
+                                width: 1.5,
+                              ),
+                              labelStyle: TextStyle(
+                                color: isSelected ? Colors.white : AppTheme.textGray,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            );
+                          },
+                        );
+                      },
+                    ),
                   ),
                   const SizedBox(height: 12),
                   
@@ -257,184 +508,206 @@ Shared via CatchUp
                     );
                   }
 
-                  // Show current article with swipe
+                  // Show current article with custom gesture swipe
+                  final article = articles[currentIndex];
+                  final isLiked = likedArticles.contains(article.id);
+                  final screenWidth = MediaQuery.of(context).size.width;
+                  
                   return Stack(
                     children: [
-                      // Swipeable Card with visual indicators
-                      CardSwiper(
-                        controller: _swiperController,
-                        cardsCount: articles.length - currentIndex,
-                        numberOfCardsDisplayed: 1,
-                        backCardOffset: const Offset(0, 0),
-                        padding: const EdgeInsets.all(16),
-                        duration: const Duration(milliseconds: 250),
-                        maxAngle: 25,
-                        threshold: 80,
-                        scale: 0.95,
-                        isLoop: false,
-                        allowedSwipeDirection: const AllowedSwipeDirection.symmetric(
-                          horizontal: true,
-                          vertical: false,
-                        ),
-                        onSwipe: (previousIndex, currentIndex2, direction) {
-                          final article = articles[currentIndex + previousIndex];
-                          
-                          if (direction == CardSwiperDirection.right) {
-                            // Swipe RIGHT = SAVE to collection
-                            print('✓ Swiped RIGHT - Saving article: ${article.title}');
-                            // Add haptic feedback
-                            HapticFeedback.mediumImpact();
-                            // Show modal after a brief delay for better UX
-                            Future.delayed(const Duration(milliseconds: 100), () {
-                              if (context.mounted) {
-                                _showSaveToCollectionModal(context, article);
-                              }
-                            });
-                          } else if (direction == CardSwiperDirection.left) {
-                            // Swipe LEFT = DISMISS/SKIP
-                            print('✗ Swiped LEFT - Skipping article: ${article.title}');
-                            // Add haptic feedback
-                            HapticFeedback.lightImpact();
-                          }
-                          
-                          // Move to next article
-                          final nextIndex = currentIndex + previousIndex + 1;
-                          ref.read(currentArticleIndexProvider.notifier).state = nextIndex;
-                          return true;
-                        },
-                        onEnd: () {
-                          // All articles swiped
-                          ref.read(currentArticleIndexProvider.notifier).state = articles.length;
-                        },
-                        cardBuilder: (context, index, horizontalOffsetPercentage, verticalOffsetPercentage) {
-                          final article = articles[currentIndex + index];
-                          final isLiked = likedArticles.contains(article.id);
-                          
-                          return Stack(
-                            children: [
-                              // Article Card
-                              ScrollableArticleCard(
-                                article: article,
-                                isLiked: isLiked,
-                                onBookmark: () {
-                                  _showSaveToCollectionModal(context, article);
-                                },
-                                onLike: () {
-                                  ref.read(likedArticlesProvider.notifier).toggleLike(article.id);
-                                },
-                                onShare: () {
-                                  _shareArticle(article);
-                                },
+                      // Swipeable Card with GestureDetector
+                      GestureDetector(
+                        onPanUpdate: _onPanUpdate,
+                        onPanEnd: (details) => _onPanEnd(details, articles),
+                        child: Transform(
+                          transform: Matrix4.identity()
+                            ..setEntry(3, 2, 0.001) // perspective
+                            ..translate(_dragX, _dragY)
+                            ..scale(_isDragging ? 0.95 : 1.0) // Shrink while dragging
+                            ..rotateZ(_dragX / 150 * 0.35), // More rotation for better feedback
+                          alignment: Alignment.center,
+                          child: Opacity(
+                            opacity: _isDragging 
+                                ? (1.0 - (_dragX.abs() / 250)).clamp(0.3, 1.0) // More dramatic fade
+                                : 1.0,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(_isDragging ? 0.3 : 0.1),
+                                    blurRadius: _isDragging ? 30 : 10,
+                                    spreadRadius: _isDragging ? 5 : 0,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
                               ),
-                              
-                              // Swipe indicators with enhanced visibility
-                              if (horizontalOffsetPercentage > 0) ...[
-                                // Swiping RIGHT - Show SAVE indicator
-                                Positioned(
-                                  top: 80,
-                                  left: 30,
-                                  child: Opacity(
-                                    opacity: (horizontalOffsetPercentage * 1.5).clamp(0.0, 1.0).toDouble(),
-                                    child: Transform.scale(
-                                      scale: 0.7 + (horizontalOffsetPercentage * 0.8),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                        decoration: BoxDecoration(
-                                          color: AppTheme.successGreen,
-                                          borderRadius: BorderRadius.circular(30),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: AppTheme.successGreen.withOpacity(0.5),
-                                              blurRadius: 20,
-                                              spreadRadius: 2,
-                                            ),
-                                          ],
-                                        ),
-                                        child: const Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(Icons.bookmark_add, color: Colors.white, size: 28),
-                                            SizedBox(width: 12),
-                                            Text(
-                                              'SAVE',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 20,
-                                                letterSpacing: 1.2,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: ScrollableArticleCard(
+                                  article: article,
+                                  isLiked: isLiked,
+                                  onScrollingChanged: (isScrolling) {
+                                    setState(() => _isContentScrolling = isScrolling);
+                                  },
+                                  onBookmark: () {
+                                    _showSaveToCollectionModal(context, article);
+                                  },
+                                  onLike: () {
+                                    ref.read(likedArticlesProvider.notifier).toggleLike(article.id);
+                                  },
+                                  onShare: () {
+                                    _shareArticle(article);
+                                  },
+                                  onAskAI: () {
+                                    _openAskAIWithArticle(context, article);
+                                  },
                                 ),
-                              ] else if (horizontalOffsetPercentage < 0) ...[
-                                // Swiping LEFT - Show SKIP indicator
-                                Positioned(
-                                  top: 80,
-                                  right: 30,
-                                  child: Opacity(
-                                    opacity: ((-horizontalOffsetPercentage) * 1.5).clamp(0.0, 1.0).toDouble(),
-                                    child: Transform.scale(
-                                      scale: 0.7 + ((-horizontalOffsetPercentage) * 0.8),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                        decoration: BoxDecoration(
-                                          color: AppTheme.errorRed,
-                                          borderRadius: BorderRadius.circular(30),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: AppTheme.errorRed.withOpacity(0.5),
-                                              blurRadius: 20,
-                                              spreadRadius: 2,
-                                            ),
-                                          ],
-                                        ),
-                                        child: const Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(Icons.close_rounded, color: Colors.white, size: 28),
-                                            SizedBox(width: 12),
-                                            Text(
-                                              'SKIP',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 20,
-                                                letterSpacing: 1.2,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          );
-                        },
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                       
-                      // Progress Indicator at Bottom
-                      Positioned(
-                        left: 16,
-                        right: 16,
-                        bottom: 16,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.6),
-                            borderRadius: BorderRadius.circular(20),
+                      // Swipe indicators - Only show after 20% threshold
+                      if (_dragX > screenWidth * 0.2) ...[
+                        // Swiping RIGHT - Show SAVE indicator
+                        Positioned(
+                          left: 40,
+                          top: MediaQuery.of(context).size.height / 2 - 100,
+                          child: AnimatedOpacity(
+                            opacity: ((_dragX - screenWidth * 0.2) / (screenWidth - screenWidth * 0.2)).clamp(0.0, 1.0),
+                            duration: Duration.zero,
+                            child: Transform.scale(
+                              scale: 0.5 + ((_dragX - screenWidth * 0.2) / (screenWidth - screenWidth * 0.2) * 0.8).clamp(0.0, 0.8),
+                              child: Transform.rotate(
+                                angle: -0.3 + ((_dragX - screenWidth * 0.2) / (screenWidth - screenWidth * 0.2) * 0.1),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.successGreen,
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: AppTheme.successGreen.withOpacity(0.6),
+                                            blurRadius: 30,
+                                            spreadRadius: 5,
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Icon(
+                                        Icons.bookmark,
+                                        color: Colors.white,
+                                        size: 48,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(color: AppTheme.successGreen, width: 3),
+                                      ),
+                                      child: const Text(
+                                        'SAVE',
+                                        style: TextStyle(
+                                          color: AppTheme.successGreen,
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 18,
+                                          letterSpacing: 2,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
-                          child:                           Text(
-                            '${currentIndex + 1}/${articles.length}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
+                        ),
+                      ] else if (_dragX < -screenWidth * 0.2) ...[
+                        // Swiping LEFT - Show SKIP indicator
+                        Positioned(
+                          right: 40,
+                          top: MediaQuery.of(context).size.height / 2 - 100,
+                          child: AnimatedOpacity(
+                            opacity: (((-_dragX) - screenWidth * 0.2) / (screenWidth - screenWidth * 0.2)).clamp(0.0, 1.0),
+                            duration: Duration.zero,
+                            child: Transform.scale(
+                              scale: 0.5 + ((((-_dragX) - screenWidth * 0.2) / (screenWidth - screenWidth * 0.2)) * 0.8).clamp(0.0, 0.8),
+                              child: Transform.rotate(
+                                angle: 0.3 - ((((-_dragX) - screenWidth * 0.2) / (screenWidth - screenWidth * 0.2)) * 0.1),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.errorRed,
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: AppTheme.errorRed.withOpacity(0.6),
+                                            blurRadius: 30,
+                                            spreadRadius: 5,
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Icon(
+                                        Icons.close,
+                                        color: Colors.white,
+                                        size: 48,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(color: AppTheme.errorRed, width: 3),
+                                      ),
+                                      child: const Text(
+                                        'SKIP',
+                                        style: TextStyle(
+                                          color: AppTheme.errorRed,
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 18,
+                                          letterSpacing: 2,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                      
+                      // Progress Indicator at Bottom-Right
+                      Positioned(
+                        bottom: 80,
+                        right: 20,
+                        child: Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.7),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${currentIndex + 1}/${articles.length}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
                             ),
                           ),
                         ),
