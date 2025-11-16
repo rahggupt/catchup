@@ -5,16 +5,7 @@ import '../../../../shared/models/article_model.dart';
 import '../../../../shared/services/ai_service.dart';
 import '../../../../shared/services/supabase_service.dart';
 import '../../../../shared/services/logger_service.dart';
-
-// AI Service provider
-final aiServiceProvider = Provider<AIService>((ref) {
-  return AIService(
-    geminiApiKey: AppConstants.geminiApiKey,
-    qdrantUrl: AppConstants.qdrantUrl,
-    qdrantKey: AppConstants.qdrantApiKey,
-    huggingFaceKey: AppConstants.huggingFaceApiKey,
-  );
-});
+import '../../../../shared/providers/ai_service_provider.dart';
 
 // Selected collection for AI chat
 final selectedChatCollectionProvider = StateProvider<String?>((ref) => null);
@@ -129,7 +120,7 @@ final sendMessageProvider = Provider<Future<void> Function(String)>((ref) {
       
       // Get AI response with RAG
       logger.info('Requesting AI response', category: 'Chat');
-      final aiService = ref.read(aiServiceProvider);
+      final aiService = await ref.read(aiServiceProvider.future);
       final collectionId = ref.read(selectedChatCollectionProvider);
       
       final response = await aiService.getChatResponseWithRAG(
@@ -172,14 +163,14 @@ final chatHistoryProvider = FutureProvider.autoDispose<List<Map<String, dynamic>
 
 // Provider to check if collection is indexed
 final collectionIndexStatusProvider = FutureProvider.family<bool, String>((ref, collectionId) async {
-  final aiService = ref.read(aiServiceProvider);
+  final aiService = await ref.watch(aiServiceProvider.future);
   return await aiService.isCollectionIndexed(collectionId);
 });
 
 // Provider to index a collection
 final indexCollectionProvider = Provider<Future<void> Function(String)>((ref) {
   return (String collectionId) async {
-    final aiService = ref.read(aiServiceProvider);
+    final aiService = await ref.read(aiServiceProvider.future);
     final supabaseService = SupabaseService();
     
     // Get collection articles
@@ -230,7 +221,7 @@ final sendArticleSummaryProvider = Provider<Future<void> Function(ArticleModel)>
       
       // Get AI summary (this will also index the article for RAG)
       logger.info('Requesting AI to generate article summary', category: 'Chat');
-      final aiService = ref.read(aiServiceProvider);
+      final aiService = await ref.read(aiServiceProvider.future);
       final summary = await aiService.getArticleSummary(article);
       
       // Save AI summary response

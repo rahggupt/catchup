@@ -7,8 +7,11 @@ import 'logger_service.dart';
 /// Provides access to Perplexity's online LLM with real-time web knowledge
 class PerplexityService {
   final LoggerService _logger = LoggerService();
+  final String? customApiKey;
   
   static const String _baseUrl = 'https://api.perplexity.ai';
+  
+  PerplexityService({this.customApiKey});
   
   /// Generate a response using Perplexity AI
   /// Combines RAG context with Perplexity's web knowledge
@@ -18,7 +21,7 @@ class PerplexityService {
     String? systemPrompt,
   }) async {
     try {
-      final apiKey = AppConstants.perplexityApiKey;
+      final apiKey = customApiKey ?? AppConstants.perplexityApiKey;
       
       if (apiKey.isEmpty) {
         _logger.error('Perplexity API key not configured', category: 'AI');
@@ -194,7 +197,8 @@ Always cite when you're using information from the saved articles vs. general we
   
   /// Check if Perplexity is configured
   bool isConfigured() {
-    return AppConstants.perplexityApiKey.isNotEmpty;
+    final apiKey = customApiKey ?? AppConstants.perplexityApiKey;
+    return apiKey.isNotEmpty;
   }
 }
 

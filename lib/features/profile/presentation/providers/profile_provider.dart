@@ -150,3 +150,36 @@ final userSourcesProvider = FutureProvider.autoDispose<List<SourceModel>>((ref) 
   }
 });
 
+// User AI configuration provider
+final userAIConfigProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final logger = LoggerService();
+  try {
+    final user = SupabaseConfig.client.auth.currentUser;
+    if (user == null) {
+      logger.info('No authenticated user, returning default AI config', category: 'Profile');
+      return {'provider': 'gemini', 'api_key': null};
+    }
+    
+    logger.info('Fetching AI config for user: ${user.id}', category: 'Profile');
+    final supabaseService = SupabaseService();
+    final userData = await supabaseService.getUser(user.id);
+    
+    if (userData == null) {
+      logger.warning('User data not found, returning default AI config', category: 'Profile');
+      return {'provider': 'gemini', 'api_key': null};
+    }
+    
+    // Access aiProvider directly from UserModel
+    final aiProviderConfig = userData.aiProvider;
+    
+    logger.success('AI config loaded: provider=${aiProviderConfig.provider}', category: 'Profile');
+    return {
+      'provider': aiProviderConfig.provider,
+      'api_key': aiProviderConfig.apiKey,
+    };
+  } catch (e, stackTrace) {
+    logger.error('Failed to fetch AI config', category: 'Profile', error: e, stackTrace: stackTrace);
+    return {'provider': 'gemini', 'api_key': null};
+  }
+});
+

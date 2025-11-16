@@ -20,32 +20,15 @@ final userCollectionsProvider = FutureProvider<List<CollectionModel>>((ref) asyn
       return [];
     }
     
-    logger.info('Fetching all collections for user (owned + member)', category: 'Collections');
+    logger.info('Fetching all collections for user: ${authUser.id}', category: 'Collections');
     
-    final client = SupabaseConfig.client;
+    // Use the simpler service method instead of complex query
+    final supabaseService = SupabaseService();
+    final collections = await supabaseService.getUserCollections(authUser.id);
     
-    // Fetch collections where user is owner OR member
-    // Using a left join with collection_members to get all collections user has access to
-    final response = await client
-        .from('collections')
-        .select('*, collection_members!left(user_id, role)')
-        .or('owner_id.eq.${authUser.id},collection_members.user_id.eq.${authUser.id}')
-        .order('created_at', ascending: false);
+    logger.success('Loaded ${collections.length} collections', category: 'Collections');
     
-    final collections = (response as List)
-        .map((json) => CollectionModel.fromJson(json))
-        .toList();
-    
-    // Remove duplicates (in case user appears in both owner and members)
-    final uniqueCollections = <String, CollectionModel>{};
-    for (final collection in collections) {
-      uniqueCollections[collection.id] = collection;
-    }
-    
-    final result = uniqueCollections.values.toList();
-    logger.success('Loaded ${result.length} collections (owned + member)', category: 'Collections');
-    
-    return result;
+    return collections;
   } catch (e, stackTrace) {
     logger.error('Failed to load collections', category: 'Collections', error: e, stackTrace: stackTrace);
     // Return empty list instead of mock data

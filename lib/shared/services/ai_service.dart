@@ -17,6 +17,8 @@ class AIService {
   final HuggingFaceService _hfService;
   final PerplexityService _perplexityService;
   String aiProvider; // Current AI provider ('gemini' or 'perplexity')
+  final String? customGeminiKey;
+  final String? customPerplexityKey;
   
   AIService({
     required this.geminiApiKey,
@@ -24,9 +26,11 @@ class AIService {
     required String qdrantKey,
     required String huggingFaceKey,
     this.aiProvider = 'gemini',
+    this.customGeminiKey,
+    this.customPerplexityKey,
   }) : _qdrantService = QdrantService(apiUrl: qdrantUrl, apiKey: qdrantKey),
        _hfService = HuggingFaceService(apiKey: huggingFaceKey),
-       _perplexityService = PerplexityService();
+       _perplexityService = PerplexityService(customApiKey: customPerplexityKey);
 
   /// Generate AI response with RAG context from collection
   Future<String> getChatResponseWithRAG({
@@ -117,9 +121,11 @@ class AIService {
   Future<String> _generateGeminiResponse(String prompt) async {
     try {
       _logger.info('Calling Gemini 2.0 Flash API', category: 'AI');
+      // Use custom key if provided, otherwise use app key
+      final apiKey = customGeminiKey ?? geminiApiKey;
       // Using Gemini 2.0 Flash (Gemini 2.5 family) for better performance
       final response = await http.post(
-        Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=$geminiApiKey'),
+        Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=$apiKey'),
         headers: {
           'Content-Type': 'application/json',
         },

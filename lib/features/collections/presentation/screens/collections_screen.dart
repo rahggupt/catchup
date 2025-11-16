@@ -11,6 +11,7 @@ import '../widgets/collection_privacy_modal.dart';
 import '../widgets/share_collection_modal.dart';
 import '../widgets/edit_collection_modal.dart';
 import '../widgets/collection_members_modal.dart';
+import '../widgets/create_collection_modal.dart';
 import 'collection_details_screen.dart';
 
 class CollectionsScreen extends ConsumerWidget {
@@ -100,7 +101,12 @@ class CollectionsScreen extends ConsumerWidget {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // TODO: Create collection modal
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (context) => const CreateCollectionModal(),
+          );
         },
         backgroundColor: AppTheme.primaryBlue,
         child: const Icon(Icons.add),

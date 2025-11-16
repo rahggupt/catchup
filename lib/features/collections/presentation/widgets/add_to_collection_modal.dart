@@ -94,6 +94,10 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
           );
           collectionId = newCollection.id;
           _logger.success('Collection created: $collectionName (${newCollection.id})', category: 'Collections');
+          
+          // Refresh collections list and profile stats
+          ref.invalidate(userCollectionsProvider);
+          ref.invalidate(profileUserProvider);
         } catch (createError, stackTrace) {
           _logger.error('Failed to create collection: $collectionName', 
             category: 'Collections', error: createError, stackTrace: stackTrace);

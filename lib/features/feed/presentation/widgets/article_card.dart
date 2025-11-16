@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../shared/models/article_model.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/services/logger_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 
@@ -32,6 +33,7 @@ class ArticleCard extends StatefulWidget {
 }
 
 class _ArticleCardState extends State<ArticleCard> with SingleTickerProviderStateMixin {
+  final LoggerService _logger = LoggerService();
   double _dragX = 0;
   double _dragY = 0;
   bool _isDragging = false;
@@ -77,6 +79,7 @@ class _ArticleCardState extends State<ArticleCard> with SingleTickerProviderStat
     if (_dragX.abs() > swipeThreshold) {
       if (_dragX > 0) {
         // Swipe right - Save
+        _logger.info('Swipe right detected on article: ${widget.article.title}', category: 'Feed');
         _animateOffScreen(true);
         Future.delayed(const Duration(milliseconds: 300), () {
           widget.onSwipeRight();
@@ -84,6 +87,7 @@ class _ArticleCardState extends State<ArticleCard> with SingleTickerProviderStat
         });
       } else {
         // Swipe left - Reject
+        _logger.info('Swipe left detected (reject) on article: ${widget.article.title}', category: 'Feed');
         _animateOffScreen(false);
         Future.delayed(const Duration(milliseconds: 300), () {
           widget.onSwipeLeft();
@@ -91,6 +95,7 @@ class _ArticleCardState extends State<ArticleCard> with SingleTickerProviderStat
       }
     } else {
       // Reset if not enough swipe
+      _logger.info('Swipe cancelled, returning to center', category: 'Feed');
       _resetPosition();
     }
   }

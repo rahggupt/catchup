@@ -68,16 +68,56 @@ class SupabaseService {
   Future<List<CollectionModel>> getUserCollections(String userId) async {
     try {
       _logger.info('Fetching collections for user: $userId', category: 'Database');
-      final response = await _client
+      
+      // First, get collections where user is owner
+      final ownedResponse = await _client
           .from('collections')
           .select()
-          .or('owner_id.eq.$userId,collaborator_ids.cs.{$userId}')
+          .eq('owner_id', userId)
           .order('created_at', ascending: false);
       
-      final collections = (response as List)
-          .map((json) => CollectionModel.fromJson(json))
-          .toList();
-      _logger.success('Fetched ${collections.length} collections', category: 'Database');
+      _logger.info('Found ${(ownedResponse as List).length} owned collections', category: 'Database');
+      
+      // Then get collections where user is a member
+      List memberCollectionIds = [];
+      try {
+        final memberResponse = await _client
+            .from('collection_members')
+            .select('collection_id')
+            .eq('user_id', userId);
+        
+        memberCollectionIds = (memberResponse as List)
+            .map((m) => m['collection_id'])
+            .toList();
+        
+        _logger.info('Found ${memberCollectionIds.length} member collection IDs', category: 'Database');
+      } catch (e) {
+        _logger.warning('Could not fetch member collections: $e', category: 'Database');
+      }
+      
+      // Fetch member collections if any
+      List<Map<String, dynamic>> allCollectionData = List.from(ownedResponse);
+      
+      if (memberCollectionIds.isNotEmpty) {
+        final memberCollectionsResponse = await _client
+            .from('collections')
+            .select()
+            .inFilter('id', memberCollectionIds);
+        
+        allCollectionData.addAll(List.from(memberCollectionsResponse));
+      }
+      
+      // Remove duplicates and convert to models
+      final uniqueCollections = <String, CollectionModel>{};
+      for (final json in allCollectionData) {
+        final collection = CollectionModel.fromJson(json);
+        uniqueCollections[collection.id] = collection;
+      }
+      
+      final collections = uniqueCollections.values.toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      
+      _logger.success('Fetched ${collections.length} total collections (owned + member)', category: 'Database');
       return collections;
     } catch (e, stackTrace) {
       _logger.error('Failed to fetch collections for user: $userId', category: 'Database', error: e, stackTrace: stackTrace);
@@ -352,6 +392,10 @@ class SupabaseService {
       
       _logger.success('Article added to collection successfully', category: 'Database');
       
+      // Recalculate collection stats immediately
+      _logger.info('Recalculating collection stats after adding article', category: 'Database');
+      await recalculateCollectionStats(collectionId);
+      
       // Update user stats - increment articles count
       await _incrementUserStat(addedBy, 'articles');
     } catch (e, stackTrace) {
@@ -401,33 +445,6 @@ class SupabaseService {
   }
 
   // ===== Collection Sharing & Privacy =====
-  
-  /// Generate a shareable link for a collection
-  Future<String> generateShareableLink(String collectionId) async {
-    try {
-      // Call the database function to generate a unique token
-      final response = await _client
-          .rpc('generate_shareable_token')
-          .select()
-          .single();
-      
-      final token = response as String;
-      
-      // Update the collection with the token and enable sharing
-      await _client
-          .from('collections')
-          .update({
-            'shareable_token': token,
-            'share_enabled': true,
-          })
-          .eq('id', collectionId);
-      
-      return token;
-    } catch (e) {
-      print('❌ Error generating shareable link: $e');
-      rethrow;
-    }
-  }
 
   /// Disable sharing for a collection
   Future<void> disableSharing(String collectionId) async {
@@ -575,9 +592,11 @@ class SupabaseService {
         // SQL function doesn't exist, generate token manually
         _logger.warning('SQL function not found, generating token manually', category: 'Database');
         
-        // Generate a random token (8 characters, URL-safe)
-        final random = DateTime.now().millisecondsSinceEpoch.toString() + collectionId.substring(0, 8);
-        final token = random.hashCode.abs().toRadixString(36).substring(0, 12);
+        // Generate a random token (URL-safe)
+        final collectionIdPart = collectionId.length >= 8 ? collectionId.substring(0, 8) : collectionId;
+        final random = DateTime.now().millisecondsSinceEpoch.toString() + collectionIdPart;
+        final hashString = random.hashCode.abs().toRadixString(36);
+        final token = hashString.substring(0, hashString.length < 12 ? hashString.length : 12).padRight(12, '0');
         
         // Update collection with token
         await _client

@@ -36,7 +36,7 @@ class AppConstants {
     
   static String get perplexityApiKey => 
     dotenv.env['PERPLEXITY_API_KEY'] ?? 
-    const String.fromEnvironment('PERPLEXITY_API_KEY', defaultValue: '');
+    const String.fromEnvironment('PERPLEXITY_API_KEY', defaultValue: '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');
   
   // Pagination
   static const int feedPageSize = 20;
@@ -52,10 +52,10 @@ class AppConstants {
   static const Duration uploadTimeout = Duration(minutes: 5);
   
   // AI
-  static const String defaultAiProvider = 'gemini'; // 'gemini' or 'perplexity'
+  static const String defaultAiProvider = 'perplexity'; // 'gemini' or 'perplexity'
   static const int maxTokens = 2000;
   static const double temperature = 0.7;
-  static const String perplexityModel = 'llama-3.1-sonar-small-128k-online';
+  static const String perplexityModel = 'sonar';
   
   // Embeddings
   static const String embeddingModel = 'sentence-transformers/all-MiniLM-L6-v2';
