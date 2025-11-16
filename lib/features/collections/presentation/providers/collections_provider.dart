@@ -10,26 +10,23 @@ final supabaseServiceProvider = Provider((ref) => SupabaseService());
 
 // User collections provider
 final userCollectionsProvider = FutureProvider<List<CollectionModel>>((ref) async {
-  // Check if in mock mode
-  if (AppConstants.supabaseUrl.isEmpty || AppConstants.supabaseAnonKey.isEmpty) {
-    return MockDataService.getMockCollections();
-  }
-  
   try {
     final authUser = SupabaseConfig.client.auth.currentUser;
     
     if (authUser == null) {
-      return MockDataService.getMockCollections();
+      print('No authenticated user, returning empty collections');
+      return [];
     }
     
     final supabaseService = ref.read(supabaseServiceProvider);
     final collections = await supabaseService.getUserCollections(authUser.id);
     
-    // Return real collections (including default ones created on signup)
+    print('Loaded ${collections.length} collections for user');
     return collections;
   } catch (e) {
     print('Error loading collections: $e');
-    return MockDataService.getMockCollections();
+    // Return empty list instead of mock data
+    return [];
   }
 });
 

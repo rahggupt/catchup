@@ -11,18 +11,12 @@ final supabaseServiceProvider = Provider((ref) => SupabaseService());
 
 // Current logged-in user provider
 final profileUserProvider = FutureProvider.autoDispose<UserModel>((ref) async {
-  // Check if in mock mode
-  if (AppConstants.supabaseUrl.isEmpty || AppConstants.supabaseAnonKey.isEmpty) {
-    return MockDataService.getMockUser();
-  }
-  
   try {
     // Get current auth user
     final authUser = SupabaseConfig.client.auth.currentUser;
     
     if (authUser == null) {
-      // Not logged in, return mock user
-      return MockDataService.getMockUser();
+      throw Exception('User not logged in');
     }
     
     // Get user profile from database
@@ -53,7 +47,7 @@ final profileUserProvider = FutureProvider.autoDispose<UserModel>((ref) async {
     );
   } catch (e) {
     print('Error loading user profile: $e');
-    return MockDataService.getMockUser();
+    rethrow; // Let error bubble up to UI
   }
 });
 
@@ -120,16 +114,12 @@ Future<Map<String, int>> _getRealStats(SupabaseService service, String userId) a
 
 // User sources provider
 final userSourcesProvider = FutureProvider.autoDispose<List<SourceModel>>((ref) async {
-  // Check if in mock mode
-  if (AppConstants.supabaseUrl.isEmpty || AppConstants.supabaseAnonKey.isEmpty) {
-    return MockDataService.getMockSources();
-  }
-  
   try {
     final authUser = SupabaseConfig.client.auth.currentUser;
     
     if (authUser == null) {
-      return MockDataService.getMockSources();
+      print('No authenticated user, returning empty sources');
+      return [];
     }
     
     final supabaseService = ref.read(supabaseServiceProvider);
@@ -146,15 +136,12 @@ final userSourcesProvider = FutureProvider.autoDispose<List<SourceModel>>((ref) 
       print('⚠️  Removed ${sources.length - dedupedSources.length} duplicate sources');
     }
     
-    // If no sources, return mock sources for demo
-    if (dedupedSources.isEmpty) {
-      return MockDataService.getMockSources();
-    }
-    
+    print('Loaded ${dedupedSources.length} sources from database');
     return dedupedSources;
   } catch (e) {
     print('Error loading sources: $e');
-    return MockDataService.getMockSources();
+    // Return empty list instead of mock data
+    return [];
   }
 });
 

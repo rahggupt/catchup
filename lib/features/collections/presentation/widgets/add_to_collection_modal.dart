@@ -81,21 +81,42 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
         
         // Create new collection
         print('📝 Creating new collection: $collectionName');
-        final newCollection = await supabaseService.createCollection(
-          name: collectionName,
-          ownerId: user.id,
-          privacy: 'private',
-          preview: widget.article.imageUrl,
-        );
-        collectionId = newCollection.id;
-        print('✅ Collection created: ${newCollection.id}');
+        print('   Owner ID: ${user.id}');
+        print('   Privacy: private');
+        
+        try {
+          final newCollection = await supabaseService.createCollection(
+            name: collectionName,
+            ownerId: user.id,
+            privacy: 'private',
+            preview: widget.article.imageUrl,
+          );
+          collectionId = newCollection.id;
+          print('✅ Collection created successfully: ${newCollection.id}');
+        } catch (createError) {
+          print('❌ Error creating collection: $createError');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to create collection: ${createError.toString()}'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+          setState(() => _isLoading = false);
+          return;
+        }
       } else {
         // Use the selected collection (all real collections have UUID format)
         collectionId = selectedCollectionId!;
+        print('📚 Using existing collection: $collectionId');
       }
 
       // First, save the article to database (if not already there)
       print('💾 Saving article to database: ${widget.article.id}');
+      print('   Article title: ${widget.article.title}');
+      print('   Article source: ${widget.article.source}');
       try {
         await supabaseService.createArticle(widget.article);
         print('✅ Article saved successfully');
@@ -105,13 +126,32 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
       }
       
       // Add article to collection
-      print('📚 Adding article to collection: $collectionId');
-      await supabaseService.addArticleToCollection(
-        collectionId: collectionId,
-        articleId: widget.article.id,
-        addedBy: user.id,
-      );
-      print('✅ Article added to collection successfully');
+      print('📚 Adding article to collection');
+      print('   Collection ID: $collectionId');
+      print('   Article ID: ${widget.article.id}');
+      print('   Added by: ${user.id}');
+      
+      try {
+        await supabaseService.addArticleToCollection(
+          collectionId: collectionId,
+          articleId: widget.article.id,
+          addedBy: user.id,
+        );
+        print('✅ Article added to collection successfully');
+      } catch (addError) {
+        print('❌ Error adding article to collection: $addError');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to add article: ${addError.toString()}'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+        setState(() => _isLoading = false);
+        return;
+      }
 
       // Refresh collections and profile stats
       print('🔄 Refreshing collections and profile stats');

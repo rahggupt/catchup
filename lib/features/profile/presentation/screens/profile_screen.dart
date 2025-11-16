@@ -26,7 +26,7 @@ class ProfileScreen extends ConsumerWidget {
       data: (user) {
         final sources = sourcesAsync.maybeWhen(
           data: (data) => data,
-          orElse: () => MockDataService.getMockSources(),
+          orElse: () => [],
         );
 
     return Scaffold(

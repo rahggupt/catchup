@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/models/article_model.dart';
 import '../../../collections/presentation/providers/collections_provider.dart';
 import '../providers/chat_provider.dart';
 
 class AiChatScreen extends ConsumerStatefulWidget {
-  const AiChatScreen({super.key});
+  final ArticleModel? article; // Optional article for context
+  
+  const AiChatScreen({
+    super.key,
+    this.article,
+  });
 
   @override
   ConsumerState<AiChatScreen> createState() => _AiChatScreenState();
@@ -14,6 +20,7 @@ class AiChatScreen extends ConsumerStatefulWidget {
 class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  bool _hasRequestedSummary = false;
 
   final List<String> _suggestedQueries = [
     'Summarize latest articles',
@@ -23,10 +30,43 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    // If article provided, auto-request summary after build
+    if (widget.article != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _requestArticleSummary();
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+  
+  Future<void> _requestArticleSummary() async {
+    if (_hasRequestedSummary || widget.article == null) return;
+    _hasRequestedSummary = true;
+    
+    print('📖 Auto-requesting summary for article: ${widget.article!.title}');
+    
+    try {
+      await ref.read(sendArticleSummaryProvider)(widget.article!);
+      _scrollToBottom();
+    } catch (e) {
+      print('❌ Error requesting article summary: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to generate summary: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _scrollToBottom() {
@@ -85,11 +125,11 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.auto_awesome, color: AppTheme.primaryBlue, size: 24),
-            SizedBox(width: 8),
-            Text('Ask AI'),
+            const Icon(Icons.auto_awesome, color: AppTheme.primaryBlue, size: 24),
+            const SizedBox(width: 8),
+            Text(widget.article != null ? 'Article Summary' : 'Ask AI'),
           ],
         ),
         actions: [

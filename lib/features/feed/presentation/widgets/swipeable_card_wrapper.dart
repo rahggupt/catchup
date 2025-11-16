@@ -22,10 +22,10 @@ class SwipeableCardWrapper extends StatefulWidget {
   });
 
   @override
-  State<SwipeableCardWrapper> createState() => _SwipeableCardWrapperState();
+  State<SwipeableCardWrapper> createState() => SwipeableCardWrapperState();
 }
 
-class _SwipeableCardWrapperState extends State<SwipeableCardWrapper>
+class SwipeableCardWrapperState extends State<SwipeableCardWrapper>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   double _dragX = 0;
@@ -186,7 +186,20 @@ class _SwipeableCardWrapperState extends State<SwipeableCardWrapper>
 
   /// Public method to reset card position (called from parent when modal cancelled)
   void resetCard() {
-    _resetPosition();
+    if (mounted) {
+      _resetPosition();
+    }
+  }
+  
+  /// Public method to force immediate reset (no animation)
+  void forceReset() {
+    if (mounted) {
+      setState(() {
+        _dragX = 0;
+        _dragY = 0;
+        _isDragging = false;
+      });
+    }
   }
 
   @override

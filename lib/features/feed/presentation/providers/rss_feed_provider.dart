@@ -230,7 +230,12 @@ final filteredArticlesProvider = Provider<AsyncValue<List<ArticleModel>>>((ref) 
   
   return articlesAsync.when(
     data: (articles) {
+      print('\n⏰ TIME FILTER DEBUG:');
+      print('   Selected filter: $timeFilter');
+      print('   Total articles: ${articles.length}');
+      
       if (timeFilter == 'All') {
+        print('   Showing all articles (no filter)');
         return AsyncValue.data(articles);
       }
       
@@ -241,24 +246,44 @@ final filteredArticlesProvider = Provider<AsyncValue<List<ArticleModel>>>((ref) 
       switch (timeFilter) {
         case '2h':
           cutoff = now.subtract(const Duration(hours: 2));
+          print('   Cutoff time (2h): $cutoff');
           break;
         case '6h':
           cutoff = now.subtract(const Duration(hours: 6));
+          print('   Cutoff time (6h): $cutoff');
           break;
         case '24h':
           cutoff = now.subtract(const Duration(hours: 24));
+          print('   Cutoff time (24h): $cutoff');
           break;
         default:
           cutoff = DateTime(2000); // Show all
+          print('   Showing all (default)');
+      }
+      
+      // Debug: Show sample article dates
+      if (articles.isNotEmpty) {
+        print('   Sample article dates:');
+        for (var i = 0; i < articles.length && i < 3; i++) {
+          final article = articles[i];
+          final pubDate = article.publishedAt ?? DateTime.now();
+          final isAfterCutoff = pubDate.isAfter(cutoff);
+          print('     - ${article.title.substring(0, 30)}...');
+          print('       Published: $pubDate');
+          print('       Passes filter: $isAfterCutoff');
+        }
       }
       
       // Filter articles
       final filtered = articles.where((article) {
         final pubDate = article.publishedAt ?? DateTime.now();
-        return pubDate.isAfter(cutoff);
+        final passes = pubDate.isAfter(cutoff);
+        return passes;
       }).toList();
       
-      print('Time filter $timeFilter: ${filtered.length} of ${articles.length} articles');
+      print('   ✓ Filtered result: ${filtered.length} of ${articles.length} articles');
+      print('   Articles removed: ${articles.length - filtered.length}\n');
+      
       return AsyncValue.data(filtered);
     },
     loading: () => const AsyncValue.loading(),

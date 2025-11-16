@@ -1,34 +1,35 @@
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 /// Application-wide constants
 class AppConstants {
   // App Info
   static const String appName = 'CatchUp';
   static const String appVersion = '1.0.0';
   
-  // API Endpoints (to be configured)
-  static const String supabaseUrl = String.fromEnvironment(
-    'SUPABASE_URL',
-    defaultValue: '',
-  );
-  static const String supabaseAnonKey = String.fromEnvironment(
-    'SUPABASE_ANON_KEY',
-    defaultValue: '',
-  );
-  static const String geminiApiKey = String.fromEnvironment(
-    'GEMINI_API_KEY',
-    defaultValue: '',
-  );
-  static const String qdrantUrl = String.fromEnvironment(
-    'QDRANT_URL',
-    defaultValue: '',
-  );
-  static const String qdrantApiKey = String.fromEnvironment(
-    'QDRANT_API_KEY',
-    defaultValue: '',
-  );
-  static const String huggingFaceApiKey = String.fromEnvironment(
-    'HUGGINGFACE_API_KEY',
-    defaultValue: '',
-  );
+  // API Endpoints (loaded from .env or compile-time environment)
+  static String get supabaseUrl => 
+    dotenv.env['SUPABASE_URL'] ?? 
+    const String.fromEnvironment('SUPABASE_URL', defaultValue: '');
+    
+  static String get supabaseAnonKey => 
+    dotenv.env['SUPABASE_ANON_KEY'] ?? 
+    const String.fromEnvironment('SUPABASE_ANON_KEY', defaultValue: '');
+    
+  static String get geminiApiKey => 
+    dotenv.env['GEMINI_API_KEY'] ?? 
+    const String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
+    
+  static String get qdrantUrl => 
+    dotenv.env['QDRANT_API_URL'] ?? 
+    const String.fromEnvironment('QDRANT_URL', defaultValue: '');
+    
+  static String get qdrantApiKey => 
+    dotenv.env['QDRANT_API_KEY'] ?? 
+    const String.fromEnvironment('QDRANT_API_KEY', defaultValue: '');
+    
+  static String get huggingFaceApiKey => 
+    dotenv.env['HUGGING_FACE_API_KEY'] ?? 
+    const String.fromEnvironment('HUGGINGFACE_API_KEY', defaultValue: '');
   
   // Pagination
   static const int feedPageSize = 20;

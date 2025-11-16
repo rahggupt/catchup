@@ -1,17 +1,17 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/config/supabase_config.dart';
+import '../../../../core/constants/app_constants.dart';
+import '../../../../shared/models/article_model.dart';
 import '../../../../shared/services/ai_service.dart';
 import '../../../../shared/services/supabase_service.dart';
 
 // AI Service provider
 final aiServiceProvider = Provider<AIService>((ref) {
-  // These should match your .env file keys
-  // For now using placeholder values - will be replaced with actual env vars
   return AIService(
-    geminiApiKey: const String.fromEnvironment('GEMINI_API_KEY', defaultValue: ''),
-    qdrantUrl: const String.fromEnvironment('QDRANT_API_URL', defaultValue: ''),
-    qdrantKey: const String.fromEnvironment('QDRANT_API_KEY', defaultValue: ''),
-    huggingFaceKey: const String.fromEnvironment('HUGGING_FACE_API_KEY', defaultValue: ''),
+    geminiApiKey: AppConstants.geminiApiKey,
+    qdrantUrl: AppConstants.qdrantUrl,
+    qdrantKey: AppConstants.qdrantApiKey,
+    huggingFaceKey: AppConstants.huggingFaceApiKey,
   );
 });
 
@@ -46,20 +46,32 @@ final createChatSessionProvider = Provider<Future<String> Function(String?)>((re
     final user = SupabaseConfig.client.auth.currentUser;
     if (user == null) throw Exception('User not logged in');
     
-    final supabaseService = SupabaseService();
+    // Don't include collection_id if it's an article-specific chat (not a valid UUID)
+    final isValidCollectionId = collectionId != null && 
+                                  !collectionId.startsWith('article_') &&
+                                  collectionId.isNotEmpty;
+    
+    final insertData = <String, dynamic>{
+      'user_id': user.id,
+      'title': isValidCollectionId ? 'New Chat' : 'Article Chat',
+    };
+    
+    // Only add collection_id if it's a valid UUID
+    if (isValidCollectionId) {
+      insertData['collection_id'] = collectionId;
+    }
+    
+    print('📝 Creating chat session: ${isValidCollectionId ? "with collection $collectionId" : "for article (no collection)"}');
     
     // Create chat in database
     final chatData = await SupabaseConfig.client
         .from('chats')
-        .insert({
-          'user_id': user.id,
-          'collection_id': collectionId,
-          'title': 'New Chat',
-        })
+        .insert(insertData)
         .select()
         .single();
     
     final chatId = chatData['id'] as String;
+    print('✅ Chat session created: $chatId');
     
     // Set as current session
     ref.read(currentChatSessionProvider.notifier).state = chatId;
@@ -155,6 +167,56 @@ final indexCollectionProvider = Provider<Future<void> Function(String)>((ref) {
       collectionId: collectionId,
       articles: articles,
     );
+  };
+});
+
+// Provider to send article for summary (auto-generates summary on chat open)
+final sendArticleSummaryProvider = Provider<Future<void> Function(ArticleModel)>((ref) {
+  return (ArticleModel article) async {
+    final user = SupabaseConfig.client.auth.currentUser;
+    if (user == null) throw Exception('User not logged in');
+    
+    // Check if AI is already thinking
+    if (ref.read(isAiThinkingProvider)) {
+      throw Exception('Please wait for AI to respond');
+    }
+    
+    // Get or create chat session with article-specific collection ID for RAG
+    var sessionId = ref.read(currentChatSessionProvider);
+    if (sessionId == null) {
+      // Use article-specific collection ID for RAG context
+      final tempCollectionId = 'article_${article.id}';
+      ref.read(selectedChatCollectionProvider.notifier).state = tempCollectionId;
+      sessionId = await ref.read(createChatSessionProvider)(tempCollectionId);
+    }
+    
+    try {
+      // Set AI thinking state
+      ref.read(isAiThinkingProvider.notifier).state = true;
+      
+      // Save system message with article context
+      await SupabaseConfig.client.from('messages').insert({
+        'chat_id': sessionId,
+        'role': 'system',
+        'content': 'Summarizing article: "${article.title}" from ${article.source}',
+      });
+      
+      // Get AI summary (this will also index the article for RAG)
+      final aiService = ref.read(aiServiceProvider);
+      final summary = await aiService.getArticleSummary(article);
+      
+      // Save AI summary response
+      await SupabaseConfig.client.from('messages').insert({
+        'chat_id': sessionId,
+        'role': 'assistant',
+        'content': summary,
+      });
+      
+      print('✅ Article indexed for RAG - follow-up questions will use article context');
+    } finally {
+      // Clear AI thinking state
+      ref.read(isAiThinkingProvider.notifier).state = false;
+    }
   };
 });
 

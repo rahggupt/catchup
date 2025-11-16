@@ -113,6 +113,12 @@ class AuthService {
       );
       
       print('✅ Login successful!');
+      
+      // Ensure user has at least one collection
+      if (response.user != null) {
+        await _ensureUserHasCollections(response.user!.id);
+      }
+      
       return response;
     } catch (e) {
       print('❌ Login failed: $e');
@@ -205,24 +211,37 @@ class AuthService {
   // Create default collections for new user
   Future<void> _createDefaultCollections(String userId) async {
     final supabaseService = SupabaseService();
-    final defaultCollections = [
-      'Saved Articles',
-      'Read Later',
-      'Favorites',
-    ];
     
-    for (final collectionName in defaultCollections) {
-      try {
-        await supabaseService.createCollection(
-          name: collectionName,
-          ownerId: userId,
-          privacy: 'private',
-        );
-        print('✓ Created default collection: $collectionName');
-      } catch (e) {
-        print('⚠️  Error creating default collection $collectionName: $e');
-        // Continue creating other collections even if one fails
+    print('📦 Creating default collection for new user: $userId');
+    
+    try {
+      final collection = await supabaseService.createCollection(
+        name: 'MyCollection',
+        ownerId: userId,
+        privacy: 'private',
+      );
+      print('✅ Created default collection: MyCollection (ID: ${collection.id})');
+    } catch (e) {
+      print('❌ Error creating default collection: $e');
+      // Non-fatal error - user can create collections manually
+    }
+  }
+  
+  // Check if user has collections, create default if none exist
+  Future<void> _ensureUserHasCollections(String userId) async {
+    try {
+      print('🔍 Checking if user $userId has collections...');
+      final supabaseService = SupabaseService();
+      final collections = await supabaseService.getUserCollections(userId);
+      
+      if (collections.isEmpty) {
+        print('⚠️  User has no collections, creating default MyCollection');
+        await _createDefaultCollections(userId);
+      } else {
+        print('✅ User already has ${collections.length} collection(s)');
       }
+    } catch (e) {
+      print('❌ Error checking user collections: $e');
     }
   }
 }

@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'qdrant_service.dart';
 import 'hugging_face_service.dart';
 import '../models/article_model.dart';
+import '../../core/config/ai_prompts_config.dart';
 
 /// Service for AI chat with RAG (Retrieval Augmented Generation)
 class AIService {
@@ -49,33 +50,20 @@ class AIService {
           );
           
           if (context.isNotEmpty) {
-            contextText = 'Relevant articles from your collection:\n\n';
-            for (var i = 0; i < context.length; i++) {
-              final payload = context[i]['payload'];
-              final score = context[i]['score'];
-              contextText += '${i + 1}. ${payload['title']}\n';
-              contextText += '   Source: ${payload['source']}\n';
-              contextText += '   Summary: ${payload['summary']}\n';
-              contextText += '   Relevance: ${(score * 100).toStringAsFixed(1)}%\n\n';
-            }
+            contextText = AIPromptsConfig.buildRagContext(context);
           }
         }
       }
       
-      // Build prompt with context
+      // Build prompt with context using centralized config
       final prompt = contextText.isNotEmpty
-          ? '''You are an AI assistant helping users understand their curated articles.
-
-$contextText
-
-User question: $query
-
-Provide a helpful, conversational response based on the context above. If the context is relevant, reference specific articles. If not enough context is available, provide general insights.'''
-          : '''You are an AI assistant helping users with their curated news articles.
-
-User question: $query
-
-Provide a helpful response based on your knowledge.''';
+          ? AIPromptsConfig.getRagChatPrompt(
+              contextText: contextText,
+              userQuery: query,
+            )
+          : AIPromptsConfig.getGeneralChatPrompt(
+              userQuery: query,
+            );
       
       // Call Gemini API
       print('🔮 Calling Gemini API...');
@@ -189,6 +177,84 @@ Provide a helpful response based on your knowledge.''';
       return await _qdrantService.collectionExists(collectionName);
     } catch (e) {
       return false;
+    }
+  }
+
+  /// Index a single article for RAG context
+  /// Creates a temporary collection for the article so AI can answer questions about it
+  Future<void> indexArticleForRAG(ArticleModel article) async {
+    try {
+      print('📊 Indexing article for RAG: ${article.title}');
+      
+      // Create a unique collection ID for this article session
+      final tempCollectionId = 'article_${article.id}';
+      
+      // Index the article
+      await _qdrantService.createCollectionKnowledgeBase(
+        collectionId: tempCollectionId,
+        articles: [article],
+        getEmbeddings: _hfService.getEmbeddings,
+      );
+      
+      print('✅ Article indexed successfully for RAG');
+    } catch (e) {
+      print('⚠️ Error indexing article: $e (RAG will work without article context)');
+      // Don't throw - we can still generate summary without RAG
+    }
+  }
+
+  /// Generate article summary with RAG context
+  /// Takes an article and returns a concise 2-3 sentence summary
+  Future<String> getArticleSummary(ArticleModel article) async {
+    try {
+      print('📝 Generating summary for article: ${article.title}');
+      
+      // First, index the article for RAG
+      await indexArticleForRAG(article);
+      
+      // Build content from article (use existing summary)
+      final content = article.summary ?? 'No content available';
+      
+      final prompt = AIPromptsConfig.getArticleSummaryPrompt(
+        title: article.title,
+        source: article.source,
+        content: content,
+        author: article.author,
+      );
+      
+      // Call Gemini API
+      print('🔮 Calling Gemini API for summary...');
+      final response = await _generateGeminiResponse(prompt);
+      
+      print('✅ Article summary generated successfully');
+      return response;
+    } catch (e) {
+      print('❌ Error generating article summary: $e');
+      return 'Sorry, I couldn\'t generate a summary for this article. Please try again.';
+    }
+  }
+
+  /// Generate quick insight about an article (shorter than full summary)
+  Future<String> getQuickInsight(ArticleModel article) async {
+    try {
+      print('💡 Generating quick insight for article: ${article.title}');
+      
+      final summary = article.summary ?? '';
+      
+      final prompt = AIPromptsConfig.getQuickInsightPrompt(
+        title: article.title,
+        source: article.source,
+        summary: summary,
+      );
+      
+      // Call Gemini API
+      final response = await _generateGeminiResponse(prompt);
+      
+      print('✅ Quick insight generated');
+      return response;
+    } catch (e) {
+      print('❌ Error generating insight: $e');
+      return 'This article discusses: ${article.title}';
     }
   }
 }
