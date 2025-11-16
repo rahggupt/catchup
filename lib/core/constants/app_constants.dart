@@ -6,6 +6,9 @@ class AppConstants {
   static const String appName = 'CatchUp';
   static const String appVersion = '1.0.0';
   
+  // Debug Mode (set via --dart-define=DEBUG_MODE=true when building APK)
+  static const bool debugMode = bool.fromEnvironment('DEBUG_MODE', defaultValue: false);
+  
   // API Endpoints (loaded from .env or compile-time environment)
   static String get supabaseUrl => 
     dotenv.env['SUPABASE_URL'] ?? 
@@ -30,6 +33,10 @@ class AppConstants {
   static String get huggingFaceApiKey => 
     dotenv.env['HUGGING_FACE_API_KEY'] ?? 
     const String.fromEnvironment('HUGGINGFACE_API_KEY', defaultValue: '');
+    
+  static String get perplexityApiKey => 
+    dotenv.env['PERPLEXITY_API_KEY'] ?? 
+    const String.fromEnvironment('PERPLEXITY_API_KEY', defaultValue: '');
   
   // Pagination
   static const int feedPageSize = 20;
@@ -45,9 +52,10 @@ class AppConstants {
   static const Duration uploadTimeout = Duration(minutes: 5);
   
   // AI
-  static const String defaultAiProvider = 'gemini';
+  static const String defaultAiProvider = 'gemini'; // 'gemini' or 'perplexity'
   static const int maxTokens = 2000;
   static const double temperature = 0.7;
+  static const String perplexityModel = 'llama-3.1-sonar-small-128k-online';
   
   // Embeddings
   static const String embeddingModel = 'sentence-transformers/all-MiniLM-L6-v2';

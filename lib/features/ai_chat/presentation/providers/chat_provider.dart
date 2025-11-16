@@ -4,6 +4,7 @@ import '../../../../core/constants/app_constants.dart';
 import '../../../../shared/models/article_model.dart';
 import '../../../../shared/services/ai_service.dart';
 import '../../../../shared/services/supabase_service.dart';
+import '../../../../shared/services/logger_service.dart';
 
 // AI Service provider
 final aiServiceProvider = Provider<AIService>((ref) {
@@ -26,79 +27,96 @@ final currentChatSessionProvider = StateProvider<String?>((ref) => null);
 
 // Chat messages for current session
 final chatMessagesProvider = StreamProvider.autoDispose<List<Map<String, dynamic>>>((ref) {
+  final logger = LoggerService();
   final sessionId = ref.watch(currentChatSessionProvider);
   
   if (sessionId == null) {
     return Stream.value([]);
   }
   
+  logger.info('Fetching messages for chat session: $sessionId', category: 'Chat');
+  
   return SupabaseConfig.client
       .from('messages')
       .stream(primaryKey: ['id'])
       .eq('chat_id', sessionId)
-      .order('created_at')
-      .map((data) => List<Map<String, dynamic>>.from(data));
+      .order('created_at', ascending: true) // Explicitly set ascending for chronological order
+      .map((data) {
+        final messages = List<Map<String, dynamic>>.from(data);
+        logger.info('Received ${messages.length} messages in chronological order', category: 'Chat');
+        return messages;
+      });
 });
 
 // Provider to create a new chat session
 final createChatSessionProvider = Provider<Future<String> Function(String?)>((ref) {
+  final logger = LoggerService();
   return (String? collectionId) async {
-    final user = SupabaseConfig.client.auth.currentUser;
-    if (user == null) throw Exception('User not logged in');
-    
-    // Don't include collection_id if it's an article-specific chat (not a valid UUID)
-    final isValidCollectionId = collectionId != null && 
-                                  !collectionId.startsWith('article_') &&
-                                  collectionId.isNotEmpty;
-    
-    final insertData = <String, dynamic>{
-      'user_id': user.id,
-      'title': isValidCollectionId ? 'New Chat' : 'Article Chat',
-    };
-    
-    // Only add collection_id if it's a valid UUID
-    if (isValidCollectionId) {
-      insertData['collection_id'] = collectionId;
+    try {
+      final user = SupabaseConfig.client.auth.currentUser;
+      if (user == null) throw Exception('User not logged in');
+      
+      // Don't include collection_id if it's an article-specific chat (not a valid UUID)
+      final isValidCollectionId = collectionId != null && 
+                                    !collectionId.startsWith('article_') &&
+                                    collectionId.isNotEmpty;
+      
+      final insertData = <String, dynamic>{
+        'user_id': user.id,
+        'title': isValidCollectionId ? 'New Chat' : 'Article Chat',
+      };
+      
+      // Only add collection_id if it's a valid UUID
+      if (isValidCollectionId) {
+        insertData['collection_id'] = collectionId;
+      }
+      
+      logger.info('Creating chat session: ${isValidCollectionId ? "with collection $collectionId" : "for article"}', category: 'Chat');
+      
+      // Create chat in database
+      final chatData = await SupabaseConfig.client
+          .from('chats')
+          .insert(insertData)
+          .select()
+          .single();
+      
+      final chatId = chatData['id'] as String;
+      logger.success('Chat session created: $chatId', category: 'Chat');
+      
+      // Set as current session
+      ref.read(currentChatSessionProvider.notifier).state = chatId;
+      
+      return chatId;
+    } catch (e, stackTrace) {
+      logger.error('Failed to create chat session', category: 'Chat', error: e, stackTrace: stackTrace);
+      rethrow;
     }
-    
-    print('📝 Creating chat session: ${isValidCollectionId ? "with collection $collectionId" : "for article (no collection)"}');
-    
-    // Create chat in database
-    final chatData = await SupabaseConfig.client
-        .from('chats')
-        .insert(insertData)
-        .select()
-        .single();
-    
-    final chatId = chatData['id'] as String;
-    print('✅ Chat session created: $chatId');
-    
-    // Set as current session
-    ref.read(currentChatSessionProvider.notifier).state = chatId;
-    
-    return chatId;
   };
 });
 
 // Provider to send a message
 final sendMessageProvider = Provider<Future<void> Function(String)>((ref) {
+  final logger = LoggerService();
   return (String message) async {
-    final user = SupabaseConfig.client.auth.currentUser;
-    if (user == null) throw Exception('User not logged in');
-    
-    // Check if AI is already thinking
-    if (ref.read(isAiThinkingProvider)) {
-      throw Exception('Please wait for AI to respond');
-    }
-    
-    // Get or create chat session
-    var sessionId = ref.read(currentChatSessionProvider);
-    if (sessionId == null) {
-      final collectionId = ref.read(selectedChatCollectionProvider);
-      sessionId = await ref.read(createChatSessionProvider)(collectionId);
-    }
-    
     try {
+      final user = SupabaseConfig.client.auth.currentUser;
+      if (user == null) throw Exception('User not logged in');
+      
+      // Check if AI is already thinking
+      if (ref.read(isAiThinkingProvider)) {
+        logger.warning('AI is already processing a message', category: 'Chat');
+        throw Exception('Please wait for AI to respond');
+      }
+      
+      // Get or create chat session
+      var sessionId = ref.read(currentChatSessionProvider);
+      if (sessionId == null) {
+        final collectionId = ref.read(selectedChatCollectionProvider);
+        sessionId = await ref.read(createChatSessionProvider)(collectionId);
+      }
+      
+      logger.info('Sending message to chat session: $sessionId', category: 'Chat');
+      
       // Set AI thinking state
       ref.read(isAiThinkingProvider.notifier).state = true;
       
@@ -110,6 +128,7 @@ final sendMessageProvider = Provider<Future<void> Function(String)>((ref) {
       });
       
       // Get AI response with RAG
+      logger.info('Requesting AI response', category: 'Chat');
       final aiService = ref.read(aiServiceProvider);
       final collectionId = ref.read(selectedChatCollectionProvider);
       
@@ -125,6 +144,10 @@ final sendMessageProvider = Provider<Future<void> Function(String)>((ref) {
         'content': response,
       });
       
+      logger.success('Message and AI response saved successfully', category: 'Chat');
+    } catch (e, stackTrace) {
+      logger.error('Failed to send message', category: 'Chat', error: e, stackTrace: stackTrace);
+      rethrow;
     } finally {
       // Clear AI thinking state
       ref.read(isAiThinkingProvider.notifier).state = false;
@@ -172,25 +195,29 @@ final indexCollectionProvider = Provider<Future<void> Function(String)>((ref) {
 
 // Provider to send article for summary (auto-generates summary on chat open)
 final sendArticleSummaryProvider = Provider<Future<void> Function(ArticleModel)>((ref) {
+  final logger = LoggerService();
   return (ArticleModel article) async {
-    final user = SupabaseConfig.client.auth.currentUser;
-    if (user == null) throw Exception('User not logged in');
-    
-    // Check if AI is already thinking
-    if (ref.read(isAiThinkingProvider)) {
-      throw Exception('Please wait for AI to respond');
-    }
-    
-    // Get or create chat session with article-specific collection ID for RAG
-    var sessionId = ref.read(currentChatSessionProvider);
-    if (sessionId == null) {
-      // Use article-specific collection ID for RAG context
-      final tempCollectionId = 'article_${article.id}';
-      ref.read(selectedChatCollectionProvider.notifier).state = tempCollectionId;
-      sessionId = await ref.read(createChatSessionProvider)(tempCollectionId);
-    }
-    
     try {
+      final user = SupabaseConfig.client.auth.currentUser;
+      if (user == null) throw Exception('User not logged in');
+      
+      // Check if AI is already thinking
+      if (ref.read(isAiThinkingProvider)) {
+        logger.warning('AI is already processing, cannot generate summary now', category: 'Chat');
+        throw Exception('Please wait for AI to respond');
+      }
+      
+      logger.info('Generating article summary for: ${article.title}', category: 'Chat');
+      
+      // Get or create chat session with article-specific collection ID for RAG
+      var sessionId = ref.read(currentChatSessionProvider);
+      if (sessionId == null) {
+        // Use article-specific collection ID for RAG context
+        final tempCollectionId = 'article_${article.id}';
+        ref.read(selectedChatCollectionProvider.notifier).state = tempCollectionId;
+        sessionId = await ref.read(createChatSessionProvider)(tempCollectionId);
+      }
+      
       // Set AI thinking state
       ref.read(isAiThinkingProvider.notifier).state = true;
       
@@ -202,6 +229,7 @@ final sendArticleSummaryProvider = Provider<Future<void> Function(ArticleModel)>
       });
       
       // Get AI summary (this will also index the article for RAG)
+      logger.info('Requesting AI to generate article summary', category: 'Chat');
       final aiService = ref.read(aiServiceProvider);
       final summary = await aiService.getArticleSummary(article);
       
@@ -212,7 +240,10 @@ final sendArticleSummaryProvider = Provider<Future<void> Function(ArticleModel)>
         'content': summary,
       });
       
-      print('✅ Article indexed for RAG - follow-up questions will use article context');
+      logger.success('Article summary generated and indexed for RAG', category: 'Chat');
+    } catch (e, stackTrace) {
+      logger.error('Failed to generate article summary: ${article.title}', category: 'Chat', error: e, stackTrace: stackTrace);
+      rethrow;
     } finally {
       // Clear AI thinking state
       ref.read(isAiThinkingProvider.notifier).state = false;

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/services/logger_service.dart';
 import '../providers/rss_feed_provider.dart';
 import '../widgets/article_card.dart';
 import '../widgets/add_source_modal.dart';
@@ -17,6 +18,7 @@ class SwipeFeedScreen extends ConsumerStatefulWidget {
 }
 
 class _SwipeFeedScreenState extends ConsumerState<SwipeFeedScreen> {
+  final LoggerService _logger = LoggerService();
   final PageController _pageController = PageController();
   int _currentPageIndex = 0;
   
@@ -33,6 +35,7 @@ class _SwipeFeedScreenState extends ConsumerState<SwipeFeedScreen> {
   }
   
   void _showSaveToCollectionModal(BuildContext context, ArticleModel article) async {
+    _logger.info('Opening save to collection modal for: ${article.title}', category: 'Feed');
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -52,7 +55,7 @@ class _SwipeFeedScreenState extends ConsumerState<SwipeFeedScreen> {
   void _openAskAIWithArticle(BuildContext context, ArticleModel article) {
     // Navigate to AI Chat screen with article context
     // The AI will automatically generate a summary
-    print('📖 Opening Ask AI with article: ${article.title}');
+    _logger.info('Opening Ask AI for article: ${article.title}', category: 'Feed');
     
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -94,6 +97,7 @@ class _SwipeFeedScreenState extends ConsumerState<SwipeFeedScreen> {
                           IconButton(
                             icon: const Icon(Icons.refresh),
                             onPressed: () {
+                              _logger.info('Refreshing feed articles', category: 'Feed');
                               ref.read(feedArticlesProvider.notifier).refresh();
                             },
                             tooltip: 'Refresh',
@@ -202,7 +206,7 @@ class _SwipeFeedScreenState extends ConsumerState<SwipeFeedScreen> {
                                         label: Text(filter),
                                         selected: isSelected,
                                         onSelected: (_) {
-                                          print('🕐 User selected time filter: $filter');
+                                          _logger.info('User selected time filter: $filter', category: 'Feed');
                                           ref.read(selectedTimeFilterProvider.notifier).state = filter;
                                         },
                                         backgroundColor: isSelected 

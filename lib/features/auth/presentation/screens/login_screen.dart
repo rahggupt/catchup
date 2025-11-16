@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/services/logger_service.dart';
 import '../providers/auth_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -12,6 +13,7 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
+  final LoggerService _logger = LoggerService();
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -28,6 +30,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _handleEmailLogin() async {
     if (!_formKey.currentState!.validate()) return;
 
+    _logger.info('Attempting email login: ${_emailController.text.trim()}', category: 'Auth');
     setState(() => _isLoading = true);
 
     try {
@@ -37,10 +40,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         password: _passwordController.text,
       );
 
+      _logger.success('Email login successful', category: 'Auth');
       if (mounted) {
         Navigator.of(context).pushReplacementNamed('/home');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      _logger.error('Email login failed', category: 'Auth', error: e, stackTrace: stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -60,6 +65,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final email = _emailController.text.trim();
     
     if (email.isEmpty || !email.contains('@')) {
+      _logger.warning('Forgot password: Invalid email format', category: 'Auth');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please enter a valid email address first'),
@@ -69,10 +75,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
+    _logger.info('Sending password reset email to: $email', category: 'Auth');
     try {
       final authService = ref.read(authServiceProvider);
       await authService.resetPassword(email);
       
+      _logger.success('Password reset email sent', category: 'Auth');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -82,7 +90,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      _logger.error('Password reset failed', category: 'Auth', error: e, stackTrace: stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -95,6 +104,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _handleGoogleLogin() async {
+    _logger.info('Attempting Google login', category: 'Auth');
     setState(() => _isLoading = true);
 
     try {
@@ -102,9 +112,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final success = await authService.signInWithGoogle();
 
       if (success && mounted) {
+        _logger.success('Google login successful', category: 'Auth');
         Navigator.of(context).pushReplacementNamed('/home');
+      } else {
+        _logger.warning('Google login cancelled by user', category: 'Auth');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      _logger.error('Google login failed', category: 'Auth', error: e, stackTrace: stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

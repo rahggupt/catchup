@@ -250,11 +250,17 @@ class RssFeedService {
 
   /// Generate consistent ID from URL
   String _generateIdFromUrl(String url) {
-    // Generate a UUID-like ID from URL hash
-    // This ensures it passes UUID checks while being deterministic
-    final hash = url.hashCode.abs().toString().padLeft(10, '0');
-    // Format as UUID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-    return '${hash.substring(0, 8)}-${hash.substring(0, 4)}-${hash.substring(0, 4)}-${hash.substring(0, 4)}-${hash}';
+    // Generate a valid UUID from URL hash
+    // Format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx (UUID v4 format)
+    final hash = url.hashCode.abs();
+    final hex = hash.toRadixString(16).padLeft(12, '0');
+    
+    // Create deterministic but valid UUID from hash
+    // Ensure we have enough characters by duplicating and taking substrings
+    final fullHex = (hex + hex + hex).substring(0, 32);
+    
+    // Format as UUID v4: 8-4-4-4-12
+    return '${fullHex.substring(0, 8)}-${fullHex.substring(8, 12)}-4${fullHex.substring(13, 16)}-${fullHex.substring(16, 20)}-${fullHex.substring(20, 32)}';
   }
 }
 

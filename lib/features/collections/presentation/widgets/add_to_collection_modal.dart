@@ -4,6 +4,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/config/supabase_config.dart';
 import '../../../../shared/models/article_model.dart';
 import '../../../../shared/services/supabase_service.dart';
+import '../../../../shared/services/logger_service.dart';
 import '../providers/collections_provider.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
 
@@ -20,6 +21,7 @@ class AddToCollectionModal extends ConsumerStatefulWidget {
 }
 
 class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
+  final LoggerService _logger = LoggerService();
   String? selectedCollectionId;
   bool _isLoading = false;
   final _newCollectionController = TextEditingController();
@@ -32,6 +34,7 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
   }
 
   Future<void> _handleSave() async {
+    _logger.info('Starting save article to collection', category: 'Collections');
     if (selectedCollectionId == null && !_showCreateNew) return;
 
     setState(() => _isLoading = true);
@@ -80,9 +83,7 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
         }
         
         // Create new collection
-        print('📝 Creating new collection: $collectionName');
-        print('   Owner ID: ${user.id}');
-        print('   Privacy: private');
+        _logger.info('Creating new collection: $collectionName', category: 'Collections');
         
         try {
           final newCollection = await supabaseService.createCollection(
@@ -92,9 +93,10 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
             preview: widget.article.imageUrl,
           );
           collectionId = newCollection.id;
-          print('✅ Collection created successfully: ${newCollection.id}');
-        } catch (createError) {
-          print('❌ Error creating collection: $createError');
+          _logger.success('Collection created: $collectionName (${newCollection.id})', category: 'Collections');
+        } catch (createError, stackTrace) {
+          _logger.error('Failed to create collection: $collectionName', 
+            category: 'Collections', error: createError, stackTrace: stackTrace);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -110,26 +112,22 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
       } else {
         // Use the selected collection (all real collections have UUID format)
         collectionId = selectedCollectionId!;
-        print('📚 Using existing collection: $collectionId');
+        _logger.info('Using existing collection: $collectionId', category: 'Collections');
       }
 
       // First, save the article to database (if not already there)
-      print('💾 Saving article to database: ${widget.article.id}');
-      print('   Article title: ${widget.article.title}');
-      print('   Article source: ${widget.article.source}');
+      _logger.info('Saving article: ${widget.article.title} (ID: ${widget.article.id})', category: 'Collections');
       try {
         await supabaseService.createArticle(widget.article);
-        print('✅ Article saved successfully');
+        _logger.success('Article saved to database', category: 'Collections');
       } catch (e) {
         // Article might already exist, that's OK
-        print('⚠️ Article might already exist: $e');
+        _logger.warning('Article might already exist in database: $e', category: 'Collections');
       }
       
       // Add article to collection
-      print('📚 Adding article to collection');
-      print('   Collection ID: $collectionId');
-      print('   Article ID: ${widget.article.id}');
-      print('   Added by: ${user.id}');
+      _logger.info('Adding article to collection (collection: $collectionId, article: ${widget.article.id})', 
+        category: 'Collections');
       
       try {
         await supabaseService.addArticleToCollection(
@@ -137,9 +135,10 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
           articleId: widget.article.id,
           addedBy: user.id,
         );
-        print('✅ Article added to collection successfully');
-      } catch (addError) {
-        print('❌ Error adding article to collection: $addError');
+        _logger.success('Article added to collection successfully', category: 'Collections');
+      } catch (addError, stackTrace) {
+        _logger.error('Failed to add article to collection', 
+          category: 'Collections', error: addError, stackTrace: stackTrace);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -154,10 +153,12 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
       }
 
       // Refresh collections and profile stats
-      print('🔄 Refreshing collections and profile stats');
+      _logger.info('Refreshing collections and profile stats', category: 'Collections');
       ref.invalidate(userCollectionsProvider);
       ref.invalidate(profileUserProvider);
 
+      _logger.success('Article save workflow completed', category: 'Collections');
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -168,9 +169,10 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
         );
         Navigator.pop(context);
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Log technical error for debugging
-      print('❌ Error saving article to collection: $e');
+      _logger.error('Unexpected error in save workflow', 
+        category: 'Collections', error: e, stackTrace: stackTrace);
       
       if (mounted) {
         // Show user-friendly error message

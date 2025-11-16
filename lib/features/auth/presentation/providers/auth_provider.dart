@@ -4,6 +4,7 @@ import '../../../../core/config/supabase_config.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../shared/models/user_model.dart';
 import '../../../../shared/services/supabase_service.dart';
+import '../../../../shared/services/logger_service.dart';
 
 // Auth state provider
 final authStateProvider = StreamProvider<User?>((ref) {
@@ -50,6 +51,8 @@ final currentUserProvider = FutureProvider<UserModel?>((ref) async {
 final authServiceProvider = Provider((ref) => AuthService());
 
 class AuthService {
+  final LoggerService _logger = LoggerService();
+  
   bool get _isMockMode => 
       AppConstants.supabaseUrl.isEmpty || 
       AppConstants.supabaseAnonKey.isEmpty;
@@ -62,36 +65,47 @@ class AuthService {
     required String lastName,
     String? phoneNumber,
   }) async {
+    _logger.info('Starting user signup process', category: 'Auth');
+    
     if (_isMockMode) {
-      // Mock signup - just return success
+      _logger.warning('Running in mock mode - signup skipped', category: 'Auth');
       return null; // null means success in mock mode
     }
     
-    final response = await SupabaseConfig.client.auth.signUp(
-      email: email,
-      password: password,
-      data: {
-        'first_name': firstName,
-        'last_name': lastName,
-        'phone_number': phoneNumber,
-      },
-    );
-    
-    // Create user profile
-    if (response.user != null) {
-      await _createUserProfile(
-        uid: response.user!.id,
+    try {
+      final response = await SupabaseConfig.client.auth.signUp(
         email: email,
-        firstName: firstName,
-        lastName: lastName,
-        phoneNumber: phoneNumber,
+        password: password,
+        data: {
+          'first_name': firstName,
+          'last_name': lastName,
+          'phone_number': phoneNumber,
+        },
       );
       
-      // Create default collections for new user
-      await _createDefaultCollections(response.user!.id);
+      // Create user profile
+      if (response.user != null) {
+        _logger.info('User signed up successfully: ${response.user!.id}', category: 'Auth');
+        
+        await _createUserProfile(
+          uid: response.user!.id,
+          email: email,
+          firstName: firstName,
+          lastName: lastName,
+          phoneNumber: phoneNumber,
+        );
+        
+        // Create default collections for new user
+        await _createDefaultCollections(response.user!.id);
+        
+        _logger.success('User profile and collections created', category: 'Auth');
+      }
+      
+      return response;
+    } catch (e, stackTrace) {
+      _logger.error('Signup failed', category: 'Auth', error: e, stackTrace: stackTrace);
+      rethrow;
     }
-    
-    return response;
   }
   
   // Sign in with email and password
@@ -105,14 +119,14 @@ class AuthService {
     }
     
     try {
-      print('🔐 Attempting login for: $email');
+      _logger.info('Attempting login for: $email', category: 'Auth');
       
       final response = await SupabaseConfig.client.auth.signInWithPassword(
         email: email,
         password: password,
       );
       
-      print('✅ Login successful!');
+      _logger.success('Login successful for: $email', category: 'Auth');
       
       // Ensure user has at least one collection
       if (response.user != null) {
@@ -120,8 +134,8 @@ class AuthService {
       }
       
       return response;
-    } catch (e) {
-      print('❌ Login failed: $e');
+    } catch (e, stackTrace) {
+      _logger.error('Login failed for: $email', category: 'Auth', error: e, stackTrace: stackTrace);
       
       // Parse error message for better user feedback
       final errorMessage = e.toString();

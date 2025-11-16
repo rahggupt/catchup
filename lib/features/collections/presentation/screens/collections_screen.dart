@@ -8,6 +8,10 @@ import '../../../../shared/services/supabase_service.dart';
 import '../providers/collections_provider.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
 import '../widgets/collection_privacy_modal.dart';
+import '../widgets/share_collection_modal.dart';
+import '../widgets/edit_collection_modal.dart';
+import '../widgets/collection_members_modal.dart';
+import 'collection_details_screen.dart';
 
 class CollectionsScreen extends ConsumerWidget {
   const CollectionsScreen({super.key});
@@ -111,105 +115,37 @@ class _CollectionCard extends ConsumerWidget {
   const _CollectionCard({required this.collection});
 
   void _shareCollection(BuildContext context) {
-    // Show share options dialog
-    showDialog(
+    // Show share modal
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Share "${collection.name}"'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Sharing features require database setup.',
-              style: TextStyle(color: AppTheme.textGray),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Privacy: ${collection.privacyLabel}',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'To enable sharing:\n'
-              '1. Run collection_sharing_schema.sql in Supabase\n'
-              '2. Collection sharing features will then be available',
-              style: TextStyle(fontSize: 12),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Got it'),
-          ),
-        ],
-      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => ShareCollectionModal(collection: collection),
     );
   }
 
   void _editCollection(BuildContext context, WidgetRef ref) {
-    // Show edit dialog
-    final nameController = TextEditingController(text: collection.name);
-    
-    showDialog(
+    // Show comprehensive edit modal
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit Collection'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                labelText: 'Collection Name',
-                border: OutlineInputBorder(),
-              ),
-              autofocus: true,
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'More edit options coming soon!',
-              style: TextStyle(fontSize: 12, color: AppTheme.textGray),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final newName = nameController.text.trim();
-              if (newName.isEmpty) return;
-              
-              try {
-                final supabaseService = SupabaseService();
-                // For now, just show a message since full edit isn't implemented
-                Navigator.pop(context);
-                
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Collection update coming soon!'),
-                    backgroundColor: Colors.orange,
-                  ),
-                );
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Unable to update collection.'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => EditCollectionModal(collection: collection),
+    ).then((updated) {
+      if (updated == true) {
+        // Refresh collections if updated
+        ref.invalidate(userCollectionsProvider);
+      }
+    });
+  }
+  
+  void _showMembers(BuildContext context) {
+    // Show members management modal
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => CollectionMembersModal(collection: collection),
     );
   }
 
@@ -278,29 +214,40 @@ class _CollectionCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Cover Image
-          if (collection.coverImage != null)
-            Container(
-              height: 120,
-              decoration: BoxDecoration(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(12),
-                ),
-                image: DecorationImage(
-                  image: NetworkImage(collection.coverImage!),
-                  fit: BoxFit.cover,
+      child: InkWell(
+        onTap: () {
+          // Navigate to collection details screen
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => CollectionDetailsScreen(collection: collection),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Cover Image
+            if (collection.coverImage != null)
+              Container(
+                height: 120,
+                decoration: BoxDecoration(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(12),
+                  ),
+                  image: DecorationImage(
+                    image: NetworkImage(collection.coverImage!),
+                    fit: BoxFit.cover,
+                  ),
                 ),
               ),
-            ),
-          // Content
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+            // Content
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                 Row(
                   children: [
                     Expanded(
@@ -321,18 +268,18 @@ class _CollectionCard extends ConsumerWidget {
                           _shareCollection(context);
                         } else if (value == 'edit') {
                           _editCollection(context, ref);
-                        } else if (value == 'privacy') {
-                          _showPrivacySettings(context);
+                        } else if (value == 'members') {
+                          _showMembers(context);
                         }
                       },
                       itemBuilder: (context) => [
                         const PopupMenuItem(
-                          value: 'privacy',
+                          value: 'members',
                           child: Row(
                             children: [
-                              Icon(Icons.lock, size: 18),
+                              Icon(Icons.people, size: 18),
                               SizedBox(width: 12),
-                              Text('Privacy Settings'),
+                              Text('Manage Members'),
                             ],
                           ),
                         ),
@@ -400,24 +347,56 @@ class _CollectionCard extends ConsumerWidget {
                   ),
                 ],
                 const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppTheme.backgroundLight,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    collection.privacyLabel,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
+                _buildPrivacyBadge(collection.privacy),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildPrivacyBadge(String privacy) {
+    IconData icon;
+    Color color;
+    String label;
+    
+    switch (privacy) {
+      case 'public':
+        icon = Icons.public;
+        color = Colors.green;
+        label = 'Public';
+        break;
+      case 'invite':
+        icon = Icons.people;
+        color = Colors.orange;
+        label = 'Invite-Only';
+        break;
+      default:
+        icon = Icons.lock;
+        color = AppTheme.primaryBlue;
+        label = 'Private';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: color,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],

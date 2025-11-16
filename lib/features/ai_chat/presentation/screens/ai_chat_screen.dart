@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/models/article_model.dart';
+import '../../../../shared/services/logger_service.dart';
 import '../../../collections/presentation/providers/collections_provider.dart';
 import '../providers/chat_provider.dart';
 
@@ -18,6 +20,7 @@ class AiChatScreen extends ConsumerStatefulWidget {
 }
 
 class _AiChatScreenState extends ConsumerState<AiChatScreen> {
+  final LoggerService _logger = LoggerService();
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   bool _hasRequestedSummary = false;
@@ -274,6 +277,11 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                 }
 
                 // Chat messages display
+                // Log message order for debugging
+                if (messages.isNotEmpty) {
+                  _logger.info('Displaying ${messages.length} messages in order', category: 'Chat');
+                }
+                
                 return ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.all(16),
@@ -321,6 +329,18 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                     final message = messages[index];
                     final isUser = message['role'] == 'user';
                     final content = message['content'] as String;
+                    final timestamp = message['created_at'] as String?;
+                    
+                    // Format timestamp if available
+                    String? timeText;
+                    if (timestamp != null) {
+                      try {
+                        final dateTime = DateTime.parse(timestamp);
+                        timeText = DateFormat('HH:mm').format(dateTime.toLocal());
+                      } catch (e) {
+                        // Ignore parse errors
+                      }
+                    }
 
                     return Align(
                       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -339,13 +359,28 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                             bottomRight: Radius.circular(isUser ? 4 : 16),
                           ),
                         ),
-                        child: Text(
-                          content,
-                          style: TextStyle(
-                            color: isUser ? Colors.white : AppTheme.textDark,
-                            fontSize: 15,
-                            height: 1.4,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              content,
+                              style: TextStyle(
+                                color: isUser ? Colors.white : AppTheme.textDark,
+                                fontSize: 15,
+                                height: 1.4,
+                              ),
+                            ),
+                            if (timeText != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                timeText,
+                                style: TextStyle(
+                                  color: isUser ? Colors.white.withOpacity(0.7) : AppTheme.textGray,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                     );

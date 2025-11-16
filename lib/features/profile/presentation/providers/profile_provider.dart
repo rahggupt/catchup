@@ -5,6 +5,7 @@ import '../../../../shared/models/user_model.dart';
 import '../../../../shared/models/source_model.dart';
 import '../../../../shared/services/mock_data_service.dart';
 import '../../../../shared/services/supabase_service.dart';
+import '../../../../shared/services/logger_service.dart';
 
 // Supabase service provider
 final supabaseServiceProvider = Provider((ref) => SupabaseService());
@@ -53,7 +54,9 @@ final profileUserProvider = FutureProvider.autoDispose<UserModel>((ref) async {
 
 // Helper function to get real stats from database
 Future<Map<String, int>> _getRealStats(SupabaseService service, String userId) async {
+  final logger = LoggerService();
   try {
+    logger.info('Calculating profile stats for user: $userId', category: 'Profile');
     final client = SupabaseConfig.client;
     
     // Count collections owned by the user
@@ -62,6 +65,7 @@ Future<Map<String, int>> _getRealStats(SupabaseService service, String userId) a
         .select('id')
         .eq('owner_id', userId);
     final collectionsCount = (collectionsResponse as List).length;
+    logger.info('Found $collectionsCount collections owned by user', category: 'Profile');
     
     // Count articles in user's collections
     int articlesCount = 0;
@@ -81,8 +85,9 @@ Future<Map<String, int>> _getRealStats(SupabaseService service, String userId) a
           }
         }
         articlesCount = uniqueArticleIds.length;
-      } catch (e) {
-        print('Error counting articles: $e');
+        logger.info('Found $articlesCount unique articles across collections', category: 'Profile');
+      } catch (e, stackTrace) {
+        logger.error('Failed to count articles', category: 'Profile', error: e, stackTrace: stackTrace);
       }
     }
     
@@ -94,20 +99,20 @@ Future<Map<String, int>> _getRealStats(SupabaseService service, String userId) a
           .select('id')
           .eq('user_id', userId);
       chatsCount = (chatsResponse as List).length;
+      logger.info('Found $chatsCount chats created by user', category: 'Profile');
     } catch (e) {
-      // Chats table might not exist
-      print('Chats table not found: $e');
+      logger.warning('Chats table not found or empty', category: 'Profile');
     }
     
-    print('✓ Real stats for user $userId: collections=$collectionsCount, articles=$articlesCount, chats=$chatsCount');
+    logger.success('Profile stats verified: collections=$collectionsCount, articles=$articlesCount, chats=$chatsCount', category: 'Profile');
     
     return {
       'collections': collectionsCount,
       'articles': articlesCount,
       'chats': chatsCount,
     };
-  } catch (e) {
-    print('✗ Error getting real stats: $e');
+  } catch (e, stackTrace) {
+    logger.error('Failed to calculate profile stats', category: 'Profile', error: e, stackTrace: stackTrace);
     return {'collections': 0, 'articles': 0, 'chats': 0};
   }
 }

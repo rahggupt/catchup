@@ -21,9 +21,16 @@ class _AIConfigModalState extends ConsumerState<AIConfigModal> {
     {
       'id': 'gemini',
       'name': 'Google Gemini',
-      'description': 'Fast, accurate, free tier available',
+      'description': 'Fast, accurate, works with your saved articles',
       'icon': Icons.psychology,
       'color': Color(0xFF4285F4),
+    },
+    {
+      'id': 'perplexity',
+      'name': 'Perplexity AI',
+      'description': 'Real-time web knowledge + saved articles',
+      'icon': Icons.search,
+      'color': Color(0xFF20808D),
     },
     {
       'id': 'openai',
@@ -247,8 +254,8 @@ class _AIConfigModalState extends ConsumerState<AIConfigModal> {
                     const SizedBox(height: 8),
                     TextField(
                       controller: _apiKeyController,
-                      decoration: const InputDecoration(
-                        hintText: 'Enter your API key',
+                      decoration: InputDecoration(
+                        hintText: 'Enter your ${_selectedProvider == 'perplexity' ? 'Perplexity' : _selectedProvider == 'openai' ? 'OpenAI' : 'Claude'} API key',
                         prefixIcon: Icon(Icons.key),
                         helperText: 'Leave empty to use app default',
                       ),
@@ -287,7 +294,7 @@ class _AIConfigModalState extends ConsumerState<AIConfigModal> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                'Google Gemini is free and works great for most users. Other providers require API keys but may offer different capabilities.',
+                                'Google Gemini uses your saved articles for context. Perplexity combines your articles with real-time web knowledge for more current information.',
                                 style: TextStyle(
                                   fontSize: 13,
                                   color: AppTheme.primaryBlue.withOpacity(0.8),

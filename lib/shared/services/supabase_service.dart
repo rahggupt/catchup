@@ -3,28 +3,38 @@ import '../models/article_model.dart';
 import '../models/collection_model.dart';
 import '../models/source_model.dart';
 import '../models/user_model.dart';
+import 'logger_service.dart';
 
 /// Service for Supabase database operations
 class SupabaseService {
   final _client = SupabaseConfig.client;
+  final LoggerService _logger = LoggerService();
 
   // ===== Articles =====
   
   Future<List<ArticleModel>> getArticles({int limit = 20}) async {
-    final response = await _client
-        .from('articles')
-        .select()
-        .order('created_at', ascending: false)
-        .limit(limit);
-    
-    return (response as List)
-        .map((json) => ArticleModel.fromJson(json))
-        .toList();
+    try {
+      _logger.info('Fetching articles (limit: $limit)', category: 'Database');
+      final response = await _client
+          .from('articles')
+          .select()
+          .order('created_at', ascending: false)
+          .limit(limit);
+      
+      final articles = (response as List)
+          .map((json) => ArticleModel.fromJson(json))
+          .toList();
+      _logger.success('Fetched ${articles.length} articles', category: 'Database');
+      return articles;
+    } catch (e, stackTrace) {
+      _logger.error('Failed to fetch articles', category: 'Database', error: e, stackTrace: stackTrace);
+      rethrow;
+    }
   }
 
   Future<ArticleModel> createArticle(ArticleModel article) async {
     try {
-      print('🔍 Checking if article exists: ${article.id}');
+      _logger.info('Checking if article exists: ${article.title} (${article.id})', category: 'Database');
       
       // Check if article already exists
       final existingResponse = await _client
@@ -34,21 +44,21 @@ class SupabaseService {
           .maybeSingle();
       
       if (existingResponse != null) {
-        print('✅ Article already exists, returning existing');
+        _logger.info('Article already exists, returning existing', category: 'Database');
         return ArticleModel.fromJson(existingResponse);
       }
       
-      print('💾 Creating new article in database');
+      _logger.info('Creating new article in database', category: 'Database');
       final response = await _client
           .from('articles')
           .insert(article.toJson())
           .select()
           .single();
       
-      print('✅ Article created successfully');
+      _logger.success('Article created successfully', category: 'Database');
       return ArticleModel.fromJson(response);
-    } catch (e) {
-      print('❌ Error creating article: $e');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to create article: ${article.title}', category: 'Database', error: e, stackTrace: stackTrace);
       rethrow;
     }
   }
@@ -56,15 +66,23 @@ class SupabaseService {
   // ===== Collections =====
   
   Future<List<CollectionModel>> getUserCollections(String userId) async {
-    final response = await _client
-        .from('collections')
-        .select()
-        .or('owner_id.eq.$userId,collaborator_ids.cs.{$userId}')
-        .order('created_at', ascending: false);
-    
-    return (response as List)
-        .map((json) => CollectionModel.fromJson(json))
-        .toList();
+    try {
+      _logger.info('Fetching collections for user: $userId', category: 'Database');
+      final response = await _client
+          .from('collections')
+          .select()
+          .or('owner_id.eq.$userId,collaborator_ids.cs.{$userId}')
+          .order('created_at', ascending: false);
+      
+      final collections = (response as List)
+          .map((json) => CollectionModel.fromJson(json))
+          .toList();
+      _logger.success('Fetched ${collections.length} collections', category: 'Database');
+      return collections;
+    } catch (e, stackTrace) {
+      _logger.error('Failed to fetch collections for user: $userId', category: 'Database', error: e, stackTrace: stackTrace);
+      rethrow;
+    }
   }
 
   Future<CollectionModel> createCollection({
@@ -73,21 +91,28 @@ class SupabaseService {
     required String privacy,
     String? preview,
   }) async {
-    final response = await _client
-        .from('collections')
-        .insert({
-          'name': name,
-          'owner_id': ownerId,
-          'privacy': privacy,
-          'preview': preview,
-        })
-        .select()
-        .single();
-    
-    // Update user stats - increment collections count
-    await _incrementUserStat(ownerId, 'collections');
-    
-    return CollectionModel.fromJson(response);
+    try {
+      _logger.info('Creating collection: $name for user: $ownerId', category: 'Database');
+      final response = await _client
+          .from('collections')
+          .insert({
+            'name': name,
+            'owner_id': ownerId,
+            'privacy': privacy,
+            'preview': preview,
+          })
+          .select()
+          .single();
+      
+      // Update user stats - increment collections count
+      await _incrementUserStat(ownerId, 'collections');
+      
+      _logger.success('Collection created: $name', category: 'Database');
+      return CollectionModel.fromJson(response);
+    } catch (e, stackTrace) {
+      _logger.error('Failed to create collection: $name', category: 'Database', error: e, stackTrace: stackTrace);
+      rethrow;
+    }
   }
 
   Future<void> deleteCollection(String collectionId) async {
@@ -102,6 +127,59 @@ class SupabaseService {
         .from('collections')
         .delete()
         .eq('id', collectionId);
+  }
+
+  /// Recalculate and update collection stats (article count, chat count, contributor count)
+  Future<void> recalculateCollectionStats(String collectionId) async {
+    try {
+      _logger.info('Recalculating stats for collection: $collectionId', category: 'Database');
+      
+      // If SQL function exists, call it
+      try {
+        await _client.rpc('recalculate_collection_stats', params: {'coll_id': collectionId});
+        _logger.success('Stats recalculated via SQL function', category: 'Database');
+        return;
+      } catch (e) {
+        // SQL function doesn't exist, calculate manually
+        _logger.warning('SQL function not found, calculating manually', category: 'Database');
+      }
+      
+      // Manual calculation fallback
+      // Count articles
+      final articlesResponse = await _client
+          .from('collection_articles')
+          .select('article_id, added_by')
+          .eq('collection_id', collectionId);
+      
+      final articles = articlesResponse as List;
+      final articleCount = articles.length;
+      final contributorIds = articles.map((a) => a['added_by']).toSet();
+      final contributorCount = contributorIds.isEmpty ? 1 : contributorIds.length;
+      
+      // Count chats
+      final chatsResponse = await _client
+          .from('chats')
+          .select('id')
+          .eq('collection_id', collectionId);
+      final chatCount = (chatsResponse as List).length;
+      
+      // Update stats
+      await _client
+          .from('collections')
+          .update({
+            'stats': {
+              'article_count': articleCount,
+              'chat_count': chatCount,
+              'contributor_count': contributorCount,
+            }
+          })
+          .eq('id', collectionId);
+      
+      _logger.success('Collection stats recalculated: articles=$articleCount, chats=$chatCount, contributors=$contributorCount', category: 'Database');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to recalculate collection stats', category: 'Database', error: e, stackTrace: stackTrace);
+      rethrow;
+    }
   }
 
   // Helper method to increment user stats
@@ -249,7 +327,7 @@ class SupabaseService {
     required String addedBy,
   }) async {
     try {
-      print('🔍 Checking if article is already in collection');
+      _logger.info('Checking if article already in collection (collection: $collectionId, article: $articleId)', category: 'Database');
       
       // Check if already exists
       final existing = await _client
@@ -260,14 +338,11 @@ class SupabaseService {
           .maybeSingle();
       
       if (existing != null) {
-        print('⚠️ Article already in collection, skipping');
+        _logger.warning('Article already in collection, skipping', category: 'Database');
         return;
       }
       
-      print('💾 Adding article to collection');
-      print('   Collection ID: $collectionId');
-      print('   Article ID: $articleId');
-      print('   Added By: $addedBy');
+      _logger.info('Adding article to collection', category: 'Database');
       
       await _client.from('collection_articles').insert({
         'collection_id': collectionId,
@@ -275,13 +350,13 @@ class SupabaseService {
         'added_by': addedBy,
       });
       
-      print('✅ Article added to collection successfully');
+      _logger.success('Article added to collection successfully', category: 'Database');
       
       // Update user stats - increment articles count
       await _incrementUserStat(addedBy, 'articles');
-    } catch (e) {
-      print('❌ Error adding article to collection: $e');
-      print('   Error details: ${e.toString()}');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to add article to collection (collection: $collectionId, article: $articleId)', 
+        category: 'Database', error: e, stackTrace: stackTrace);
       rethrow;
     }
   }
@@ -385,6 +460,44 @@ class SupabaseService {
     }
   }
 
+  /// Update collection with arbitrary fields
+  Future<void> updateCollection(String collectionId, Map<String, dynamic> updates) async {
+    try {
+      _logger.info('Updating collection: $collectionId with ${updates.keys.join(", ")}', category: 'Database');
+      
+      await _client
+          .from('collections')
+          .update(updates)
+          .eq('id', collectionId);
+      
+      _logger.success('Collection updated successfully', category: 'Database');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to update collection', category: 'Database', error: e, stackTrace: stackTrace);
+      rethrow;
+    }
+  }
+
+  /// Remove an article from a collection
+  Future<void> removeArticleFromCollection({
+    required String collectionId,
+    required String articleId,
+  }) async {
+    try {
+      _logger.info('Removing article from collection (collection: $collectionId, article: $articleId)', category: 'Database');
+      
+      await _client
+          .from('collection_articles')
+          .delete()
+          .eq('collection_id', collectionId)
+          .eq('article_id', articleId);
+      
+      _logger.success('Article removed from collection successfully', category: 'Database');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to remove article from collection', category: 'Database', error: e, stackTrace: stackTrace);
+      rethrow;
+    }
+  }
+
   /// Add a member to a collection
   Future<void> addCollectionMember({
     required String collectionId,
@@ -440,6 +553,75 @@ class SupabaseService {
     }
   }
 
+  /// Generate a shareable link for a collection
+  Future<String> generateShareableLink(String collectionId) async {
+    try {
+      _logger.info('Generating shareable link for collection: $collectionId', category: 'Database');
+      
+      // Try to call SQL function first
+      try {
+        final result = await _client.rpc('generate_shareable_token', params: {'coll_id': collectionId});
+        final token = result as String;
+        
+        // Update collection to enable sharing
+        await _client
+            .from('collections')
+            .update({'share_enabled': true})
+            .eq('id', collectionId);
+        
+        _logger.success('Shareable link generated with SQL function', category: 'Database');
+        return 'catchup://collection/$token';
+      } catch (e) {
+        // SQL function doesn't exist, generate token manually
+        _logger.warning('SQL function not found, generating token manually', category: 'Database');
+        
+        // Generate a random token (8 characters, URL-safe)
+        final random = DateTime.now().millisecondsSinceEpoch.toString() + collectionId.substring(0, 8);
+        final token = random.hashCode.abs().toRadixString(36).substring(0, 12);
+        
+        // Update collection with token
+        await _client
+            .from('collections')
+            .update({
+              'shareable_token': token,
+              'share_enabled': true,
+            })
+            .eq('id', collectionId);
+        
+        _logger.success('Shareable link generated manually: $token', category: 'Database');
+        return 'catchup://collection/$token';
+      }
+    } catch (e, stackTrace) {
+      _logger.error('Failed to generate shareable link', category: 'Database', error: e, stackTrace: stackTrace);
+      rethrow;
+    }
+  }
+
+  /// Get collection by shareable token
+  Future<Map<String, dynamic>?> getCollectionByToken(String token) async {
+    try {
+      _logger.info('Fetching collection by token', category: 'Database');
+      
+      final response = await _client
+          .from('collections')
+          .select('*, owner:users!owner_id(email, raw_user_meta_data)')
+          .eq('shareable_token', token)
+          .eq('share_enabled', true)
+          .maybeSingle();
+      
+      if (response == null) {
+        _logger.warning('No collection found for token', category: 'Database');
+        return null;
+      }
+      
+      _logger.success('Collection found by token', category: 'Database');
+      return response as Map<String, dynamic>;
+    } catch (e, stackTrace) {
+      _logger.error('Failed to fetch collection by token', category: 'Database', error: e, stackTrace: stackTrace);
+      rethrow;
+    }
+  }
+
   /// Send an invite to join a collection
   Future<void> sendCollectionInvite({
     required String collectionId,
@@ -448,14 +630,18 @@ class SupabaseService {
     DateTime? expiresAt,
   }) async {
     try {
+      _logger.info('Sending collection invite to: $inviteeEmail', category: 'Database');
+      
       await _client.from('collection_invites').insert({
         'collection_id': collectionId,
         'inviter_id': inviterId,
         'invitee_email': inviteeEmail,
         'expires_at': expiresAt?.toIso8601String(),
       });
-    } catch (e) {
-      print('❌ Error sending collection invite: $e');
+      
+      _logger.success('Collection invite sent successfully', category: 'Database');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to send collection invite', category: 'Database', error: e, stackTrace: stackTrace);
       rethrow;
     }
   }

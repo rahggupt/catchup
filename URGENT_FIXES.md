@@ -16,30 +16,70 @@ for relation "collections", code: 42P17)
 ```
 **Location:** Feed screen when trying to create/load collections
 
+**Root Cause:** The collections table has 9 duplicate RLS policies (should only have 4):
+- 3 SELECT policies (causing conflicts)
+- 2 INSERT policies (duplicates)
+- 2 UPDATE policies (duplicates)
+- 2 DELETE policies (duplicates)
+
+One of the SELECT policies references `collaborator_ids` which causes recursion.
+
 ---
 
 ## ✅ SOLUTION: Quick Fix in 3 Steps
 
+### ⚠️ STILL GETTING RECURSION ERROR?
+
+If you ran the SQL and still get infinite recursion, use the **NUCLEAR OPTION**:
+
+**Run this file in Supabase SQL Editor:**
+```
+database/NUCLEAR_RLS_FIX.sql
+```
+
+This script:
+- Temporarily disables RLS
+- Aggressively drops ALL policies using dynamic SQL
+- Verifies 0 policies remain
+- Creates only 4 clean policies
+- Also fixes collection_members policies
+- Re-enables RLS
+
+**Or diagnose first:**
+```
+database/DIAGNOSE_RLS_ISSUE.sql
+```
+This shows exactly what policies exist and which are problematic.
+
+---
+
 ### Step 1: Fix Collections RLS (Error 2) 🔧
+
+⚠️ **IMPORTANT:** This drops ALL 9 duplicate policies and creates only 4 clean ones.
 
 1. Open **Supabase SQL Editor**
 2. Copy and paste this SQL:
 
 ```sql
--- Fix infinite recursion in collections RLS policies
--- The issue: owner_id policy references collections table while evaluating collections table
+-- Complete cleanup of ALL duplicate and problematic policies
 
--- Drop existing policies
+-- Drop ALL 9 existing policies by name
+DROP POLICY IF EXISTS "Users can view own and shared collections" ON collections;
 DROP POLICY IF EXISTS "Users can view their own collections" ON collections;
+DROP POLICY IF EXISTS "collection_access" ON collections;
 DROP POLICY IF EXISTS "Users can create collections" ON collections;
+DROP POLICY IF EXISTS "Users can insert collections" ON collections;
+DROP POLICY IF EXISTS "Users can update own collections" ON collections;
 DROP POLICY IF EXISTS "Users can update their own collections" ON collections;
+DROP POLICY IF EXISTS "Users can delete own collections" ON collections;
 DROP POLICY IF EXISTS "Users can delete their own collections" ON collections;
 DROP POLICY IF EXISTS "Users can view collections they're members of" ON collections;
+DROP POLICY IF EXISTS "collection_member_access" ON collections;
 
--- Recreate policies without recursion
+-- Recreate ONLY 4 simple policies (no recursion, no duplicates)
 
--- SELECT policy: Users can view collections they own OR are members of
-CREATE POLICY "Users can view their own collections"
+-- Policy 1: SELECT
+CREATE POLICY "collections_select_policy"
 ON collections FOR SELECT
 USING (
   auth.uid() = owner_id
@@ -51,27 +91,32 @@ USING (
   )
 );
 
--- INSERT policy: Users can create collections
-CREATE POLICY "Users can create collections"
+-- Policy 2: INSERT
+CREATE POLICY "collections_insert_policy"
 ON collections FOR INSERT
 WITH CHECK (auth.uid() = owner_id);
 
--- UPDATE policy: Only owners can update collections
-CREATE POLICY "Users can update their own collections"
+-- Policy 3: UPDATE
+CREATE POLICY "collections_update_policy"
 ON collections FOR UPDATE
 USING (auth.uid() = owner_id)
 WITH CHECK (auth.uid() = owner_id);
 
--- DELETE policy: Only owners can delete collections
-CREATE POLICY "Users can delete their own collections"
+-- Policy 4: DELETE
+CREATE POLICY "collections_delete_policy"
 ON collections FOR DELETE
 USING (auth.uid() = owner_id);
 
--- Verify RLS is enabled
 ALTER TABLE collections ENABLE ROW LEVEL SECURITY;
 ```
 
 3. Click **Run** ▶️
+
+**Verify:** Run this to confirm you have exactly 4 policies:
+```sql
+SELECT COUNT(*) FROM pg_policies WHERE tablename = 'collections';
+-- Should return: 4
+```
 
 ---
 
@@ -128,9 +173,17 @@ flutter run -d <your-device-id>
 ## 🎯 What These Fixes Do
 
 ### Fix 1: Collections RLS
-- **Before:** RLS policies had infinite recursion checking `owner_id`
-- **After:** Simplified policies that directly check `auth.uid() = owner_id`
-- **Result:** ✅ Collections can now be created and loaded
+- **Before:** 9 duplicate RLS policies causing conflicts and recursion
+  - 3 SELECT policies (one referencing `collaborator_ids` causing recursion)
+  - 2 INSERT policies (duplicates from multiple migrations)
+  - 2 UPDATE policies (duplicates)
+  - 2 DELETE policies (duplicates)
+- **After:** Exactly 4 clean policies with simple `auth.uid() = owner_id` checks
+  - `collections_select_policy` (SELECT)
+  - `collections_insert_policy` (INSERT)
+  - `collections_update_policy` (UPDATE)
+  - `collections_delete_policy` (DELETE)
+- **Result:** ✅ No more infinite recursion, collections load properly
 
 ### Fix 2: Chat Collection ID
 - **Before:** `collection_id` required a valid UUID, but we used `"article_xxx"` for article chats
@@ -173,15 +226,22 @@ flutter run -d <your-device-id>
 
 ### Collections Still Not Loading?
 ```bash
-# Check if RLS policies were applied
+# Check if RLS policies were applied correctly
 # Run this in Supabase SQL Editor:
-SELECT * FROM pg_policies WHERE tablename = 'collections';
+SELECT policyname, cmd FROM pg_policies WHERE tablename = 'collections' ORDER BY cmd;
 
-# You should see 4 policies:
-# 1. Users can view their own collections
-# 2. Users can create collections
-# 3. Users can update their own collections
-# 4. Users can delete their own collections
+# You should see EXACTLY 4 policies with these names:
+# 1. collections_delete_policy (DELETE)
+# 2. collections_insert_policy (INSERT)
+# 3. collections_select_policy (SELECT)
+# 4. collections_update_policy (UPDATE)
+
+# If you still see 9 policies or old policy names, the SQL didn't run properly.
+# Copy the COMPLETE_RLS_FIX.sql file and run it again.
+
+# Check policy count:
+SELECT COUNT(*) FROM pg_policies WHERE tablename = 'collections';
+-- Must return: 4 (not 9!)
 ```
 
 ### Ask AI Still Failing?
@@ -213,9 +273,11 @@ Once both errors are fixed, you should be able to:
 ## 💡 Why These Errors Happened
 
 ### RLS Recursion:
-- The RLS policy was checking `owner_id` on the `collections` table
-- While evaluating a `collections` query, it triggered another `collections` query
-- This caused infinite recursion → Internal Server Error
+- **Multiple migrations** created duplicate policies over time (9 total instead of 4)
+- One of the SELECT policies (`"Users can view own and shared collections"`) referenced a `collaborator_ids` field or used `ANY()` operations
+- When Postgres evaluated the policy, it triggered another query on `collections`
+- This created infinite recursion → Internal Server Error (code: 42P17)
+- The duplicates also caused policy conflicts, making it hard to debug
 
 ### Invalid UUID:
 - We tried to use `"article_04673919..."` as a `collection_id`
@@ -228,5 +290,50 @@ Once both errors are fixed, you should be able to:
 ## ✅ Summary
 
 **Run 2 SQL scripts in Supabase → Restart app → Everything works!**
+
+### Quick Reference:
+
+**If recursion error persists after running fixes:**
+1. **Diagnose:** Run `database/DIAGNOSE_RLS_ISSUE.sql` to see what's wrong
+2. **Nuclear Fix:** Run `database/NUCLEAR_RLS_FIX.sql` to aggressively clean everything
+
+**Standard fixes:**
+- **Comprehensive Fix:** Use `database/RUN_ALL_FIXES.sql` (includes both fixes)
+- **Collections Only:** Use `database/COMPLETE_RLS_FIX.sql` (just RLS cleanup)
+- **Chat Fix Only:** Use `database/fix_chat_collection_nullable.sql`
+
+### What Gets Fixed:
+1. **Collections:** 9 duplicate policies → 4 clean policies (no recursion)
+2. **Ask AI:** Makes `collection_id` nullable so article chats work
+
+### Troubleshooting Persistent Recursion:
+
+If you still get the error after running the fixes:
+
+1. **Run diagnostic:**
+   ```sql
+   -- Copy and run: database/DIAGNOSE_RLS_ISSUE.sql
+   -- This shows all policies and identifies problematic ones
+   ```
+
+2. **Use nuclear option:**
+   ```sql
+   -- Copy and run: database/NUCLEAR_RLS_FIX.sql
+   -- This forcefully removes ALL policies and recreates them
+   -- Also fixes collection_members table policies
+   ```
+
+3. **Verify it worked:**
+   ```sql
+   SELECT COUNT(*) FROM pg_policies WHERE tablename = 'collections';
+   -- Must return: 4
+   
+   SELECT policyname FROM pg_policies WHERE tablename = 'collections' ORDER BY policyname;
+   -- Should show:
+   -- collections_delete_policy
+   -- collections_insert_policy
+   -- collections_select_policy
+   -- collections_update_policy
+   ```
 
 Both errors are now fixed! 🎉
