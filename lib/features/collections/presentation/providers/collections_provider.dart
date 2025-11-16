@@ -48,9 +48,49 @@ final collectionArticlesRealtimeProvider = StreamProvider.family<List<Map<String
         .stream(primaryKey: ['id'])
         .eq('collection_id', collectionId)
         .order('added_at', ascending: false)
-        .map((data) {
-          logger.info('Realtime update received: ${data.length} articles', category: 'Collections');
-          return List<Map<String, dynamic>>.from(data);
+        .asyncMap((collectionArticles) async {
+          logger.info('Realtime update received: ${collectionArticles.length} collection_articles', category: 'Collections');
+          
+          if (collectionArticles.isEmpty) {
+            return [];
+          }
+          
+          // Extract article IDs from collection_articles
+          final articleIds = collectionArticles
+              .map((ca) => ca['article_id'] as String)
+              .toList();
+          
+          logger.info('Fetching ${articleIds.length} articles from articles table', category: 'Collections');
+          
+          // Fetch the actual article data
+          try {
+            final articlesData = await SupabaseConfig.client
+                .from('articles')
+                .select()
+                .inFilter('id', articleIds);
+            
+            // Create a map of article_id -> article for quick lookup
+            final articlesMap = <String, Map<String, dynamic>>{};
+            for (final article in articlesData) {
+              articlesMap[article['id'] as String] = article as Map<String, dynamic>;
+            }
+            
+            // Combine collection_articles with articles data
+            final result = collectionArticles.map((ca) {
+              final articleId = ca['article_id'] as String;
+              return {
+                ...ca,
+                'article': articlesMap[articleId],
+              };
+            }).where((item) => item['article'] != null).toList();
+            
+            logger.success('Fetched ${result.length} articles with full data', category: 'Collections');
+            
+            return result;
+          } catch (e, stackTrace) {
+            logger.error('Failed to fetch articles data', category: 'Collections', error: e, stackTrace: stackTrace);
+            return [];
+          }
         });
   },
 );
