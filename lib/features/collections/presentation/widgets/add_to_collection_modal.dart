@@ -4,6 +4,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/config/supabase_config.dart';
 import '../../../../shared/models/article_model.dart';
 import '../../../../shared/services/supabase_service.dart';
+import '../../../../shared/services/logger_service.dart';
 import '../providers/collections_provider.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
 
@@ -20,6 +21,7 @@ class AddToCollectionModal extends ConsumerStatefulWidget {
 }
 
 class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
+  final LoggerService _logger = LoggerService();
   String? selectedCollectionId;
   bool _isLoading = false;
   final _newCollectionController = TextEditingController();
@@ -32,6 +34,7 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
   }
 
   Future<void> _handleSave() async {
+    _logger.info('Starting save article to collection', category: 'Collections');
     if (selectedCollectionId == null && !_showCreateNew) return;
 
     setState(() => _isLoading = true);
@@ -63,57 +66,103 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
       String collectionId;
 
       if (_showCreateNew) {
-        // Create new collection
-        final newCollection = await supabaseService.createCollection(
-          name: _newCollectionController.text.trim(),
-          ownerId: user.id,
-          privacy: 'private',
-          preview: widget.article.imageUrl,
-        );
-        collectionId = newCollection.id;
-      } else {
-        // Check if collection ID is valid (mock IDs are just numbers like "1", "2", etc.)
-        final isCollectionMock = !selectedCollectionId!.contains('-') && selectedCollectionId!.length < 5;
-        if (isCollectionMock) {
+        // Validate collection name
+        final collectionName = _newCollectionController.text.trim();
+        if (collectionName.isEmpty) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Cannot add to mock collection. Please create a new collection first.'),
+                content: Text('Please enter a collection name.'),
                 backgroundColor: Colors.orange,
-                duration: Duration(seconds: 3),
+                duration: Duration(seconds: 2),
               ),
             );
           }
           setState(() => _isLoading = false);
           return;
         }
+        
+        // Create new collection
+        _logger.info('Creating new collection: $collectionName', category: 'Collections');
+        
+        try {
+          final newCollection = await supabaseService.createCollection(
+            name: collectionName,
+            ownerId: user.id,
+            privacy: 'private',
+            preview: widget.article.imageUrl,
+          );
+          collectionId = newCollection.id;
+          _logger.success('Collection created: $collectionName (${newCollection.id})', category: 'Collections');
+          
+          // Refresh collections list and profile stats
+          ref.invalidate(userCollectionsProvider);
+          ref.invalidate(profileUserProvider);
+        } catch (createError, stackTrace) {
+          _logger.error('Failed to create collection: $collectionName', 
+            category: 'Collections', error: createError, stackTrace: stackTrace);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to create collection: ${createError.toString()}'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+          setState(() => _isLoading = false);
+          return;
+        }
+      } else {
+        // Use the selected collection (all real collections have UUID format)
         collectionId = selectedCollectionId!;
+        _logger.info('Using existing collection: $collectionId', category: 'Collections');
       }
 
       // First, save the article to database (if not already there)
-      print('💾 Saving article to database: ${widget.article.id}');
+      _logger.info('Saving article: ${widget.article.title} (ID: ${widget.article.id})', category: 'Collections');
       try {
         await supabaseService.createArticle(widget.article);
-        print('✅ Article saved successfully');
+        _logger.success('Article saved to database', category: 'Collections');
       } catch (e) {
         // Article might already exist, that's OK
-        print('⚠️ Article might already exist: $e');
+        _logger.warning('Article might already exist in database: $e', category: 'Collections');
       }
       
       // Add article to collection
-      print('📚 Adding article to collection: $collectionId');
-      await supabaseService.addArticleToCollection(
-        collectionId: collectionId,
-        articleId: widget.article.id,
-        addedBy: user.id,
-      );
-      print('✅ Article added to collection successfully');
+      _logger.info('Adding article to collection (collection: $collectionId, article: ${widget.article.id})', 
+        category: 'Collections');
+      
+      try {
+        await supabaseService.addArticleToCollection(
+          collectionId: collectionId,
+          articleId: widget.article.id,
+          addedBy: user.id,
+        );
+        _logger.success('Article added to collection successfully', category: 'Collections');
+      } catch (addError, stackTrace) {
+        _logger.error('Failed to add article to collection', 
+          category: 'Collections', error: addError, stackTrace: stackTrace);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to add article: ${addError.toString()}'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+        setState(() => _isLoading = false);
+        return;
+      }
 
       // Refresh collections and profile stats
-      print('🔄 Refreshing collections and profile stats');
+      _logger.info('Refreshing collections and profile stats', category: 'Collections');
       ref.invalidate(userCollectionsProvider);
       ref.invalidate(profileUserProvider);
 
+      _logger.success('Article save workflow completed', category: 'Collections');
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -124,12 +173,18 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
         );
         Navigator.pop(context);
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      // Log technical error for debugging
+      _logger.error('Unexpected error in save workflow', 
+        category: 'Collections', error: e, stackTrace: stackTrace);
+      
       if (mounted) {
+        // Show user-friendly error message
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
+          const SnackBar(
+            content: Text('Unable to save article. Please try again.'),
             backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
           ),
         );
       }

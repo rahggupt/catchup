@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_card_swiper/flutter_card_swiper.dart';
-import 'package:share_plus/share_plus.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/services/logger_service.dart';
 import '../providers/rss_feed_provider.dart';
-import '../widgets/scrollable_article_card.dart';
+import '../widgets/article_card.dart';
 import '../widgets/add_source_modal.dart';
 import '../../../collections/presentation/widgets/add_to_collection_modal.dart';
+import '../../../ai_chat/presentation/screens/ai_chat_screen.dart';
 import '../../../../shared/models/article_model.dart';
 
 class SwipeFeedScreen extends ConsumerStatefulWidget {
@@ -19,16 +18,25 @@ class SwipeFeedScreen extends ConsumerStatefulWidget {
 }
 
 class _SwipeFeedScreenState extends ConsumerState<SwipeFeedScreen> {
-  final CardSwiperController _swiperController = CardSwiperController();
+  final LoggerService _logger = LoggerService();
+  final PageController _pageController = PageController();
+  int _currentPageIndex = 0;
+  
+  // Track card animations for each article
+  final Map<String, AnimationController> _cardAnimations = {};
   
   @override
   void dispose() {
-    _swiperController.dispose();
+    _pageController.dispose();
+    for (var controller in _cardAnimations.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
-
-  void _showSaveToCollectionModal(BuildContext context, ArticleModel article) {
-    showModalBottomSheet(
+  
+  void _showSaveToCollectionModal(BuildContext context, ArticleModel article) async {
+    _logger.info('Opening save to collection modal for: ${article.title}', category: 'Feed');
+    await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -44,27 +52,16 @@ class _SwipeFeedScreenState extends ConsumerState<SwipeFeedScreen> {
     );
   }
 
-  Future<void> _shareArticle(ArticleModel article) async {
-    try {
-      final shareText = '''
-${article.title}
-
-${article.summary}
-
-Read more: ${article.url}
-
-Shared via CatchUp
-''';
-      
-      await Share.share(
-        shareText,
-        subject: article.title,
-      );
-      
-      print('✓ Article shared: ${article.title}');
-    } catch (e) {
-      print('✗ Error sharing article: $e');
-    }
+  void _openAskAIWithArticle(BuildContext context, ArticleModel article) {
+    // Navigate to AI Chat screen with article context
+    // The AI will automatically generate a summary
+    _logger.info('Opening Ask AI for article: ${article.title}', category: 'Feed');
+    
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => AiChatScreen(article: article),
+      ),
+    );
   }
 
   @override
@@ -72,7 +69,6 @@ Shared via CatchUp
     final feedArticlesAsync = ref.watch(filteredArticlesProvider);
     final selectedTime = ref.watch(selectedTimeFilterProvider);
     final likedArticles = ref.watch(likedArticlesProvider);
-    final currentIndex = ref.watch(currentArticleIndexProvider);
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
@@ -101,8 +97,8 @@ Shared via CatchUp
                           IconButton(
                             icon: const Icon(Icons.refresh),
                             onPressed: () {
+                              _logger.info('Refreshing feed articles', category: 'Feed');
                               ref.read(feedArticlesProvider.notifier).refresh();
-                              ref.read(currentArticleIndexProvider.notifier).state = 0;
                             },
                             tooltip: 'Refresh',
                           ),
@@ -124,62 +120,150 @@ Shared via CatchUp
                   ),
                   const SizedBox(height: 12),
                   
-                  // Time Filter Row
-                  Row(
+                  // Topic Filter Chips
+                  SizedBox(
+                    height: 40,
+                    child: Consumer(
+                      builder: (context, topicRef, _) {
+                        final selectedTopic = topicRef.watch(selectedTopicFilterProvider);
+                        final topics = ['All Sources', 'Friends\' Adds', 'Tech', 'Science', 'AI', 'Politics', 'Business', 'Health', 'Climate', 'Innovation'];
+                        
+                        return ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: topics.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 8),
+                          itemBuilder: (context, index) {
+                            final topic = topics[index];
+                            final isSelected = (selectedTopic == null && topic == 'All Sources') ||
+                                             (selectedTopic == 'friends' && topic == 'Friends\' Adds') ||
+                                             (selectedTopic == topic && topic != 'All Sources' && topic != 'Friends\' Adds');
+                            
+                            return FilterChip(
+                              label: Text(topic),
+                              selected: isSelected,
+                              onSelected: (_) {
+                                if (topic == 'All Sources') {
+                                  topicRef.read(selectedTopicFilterProvider.notifier).state = null;
+                                } else if (topic == 'Friends\' Adds') {
+                                  topicRef.read(selectedTopicFilterProvider.notifier).state = 'friends';
+                                } else {
+                                  topicRef.read(selectedTopicFilterProvider.notifier).state = topic;
+                                }
+                              },
+                              backgroundColor: isSelected 
+                                  ? AppTheme.primaryBlue 
+                                  : Colors.white,
+                              selectedColor: AppTheme.primaryBlue,
+                              side: BorderSide(
+                                color: isSelected ? AppTheme.primaryBlue : AppTheme.borderGray,
+                                width: 1.5,
+                              ),
+                              labelStyle: TextStyle(
+                                color: isSelected ? Colors.white : AppTheme.textGray,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // Time Filter Row with Active Indicator
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Time: ',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textGray,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: SizedBox(
-                          height: 36,
-                          child: Consumer(
-                            builder: (context, watchRef, _) {
-                              final timeFilters = ['2h', '6h', '24h', 'All'];
-                              
-                              return ListView.separated(
-                                scrollDirection: Axis.horizontal,
-                                itemCount: timeFilters.length,
-                                separatorBuilder: (_, __) => const SizedBox(width: 8),
-                                itemBuilder: (context, index) {
-                                  final filter = timeFilters[index];
-                                  final isSelected = filter == selectedTime;
-                                  return FilterChip(
-                                    label: Text(filter),
-                                    selected: isSelected,
-                                    onSelected: (_) {
-                                      ref.read(selectedTimeFilterProvider.notifier).state = filter;
-                                      ref.read(currentArticleIndexProvider.notifier).state = 0;
+                      Row(
+                        children: [
+                          const Text(
+                            'Time: ',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textGray,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: SizedBox(
+                              height: 36,
+                              child: Consumer(
+                                builder: (context, watchRef, _) {
+                                  final timeFilters = ['2h', '6h', '24h', 'All'];
+                                  
+                                  return ListView.separated(
+                                    scrollDirection: Axis.horizontal,
+                                    itemCount: timeFilters.length,
+                                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                                    itemBuilder: (context, index) {
+                                      final filter = timeFilters[index];
+                                      final isSelected = filter == selectedTime;
+                                      return FilterChip(
+                                        label: Text(filter),
+                                        selected: isSelected,
+                                        onSelected: (_) {
+                                          _logger.info('User selected time filter: $filter', category: 'Feed');
+                                          ref.read(selectedTimeFilterProvider.notifier).state = filter;
+                                        },
+                                        backgroundColor: isSelected 
+                                            ? AppTheme.secondaryPurple 
+                                            : Colors.white,
+                                        selectedColor: AppTheme.secondaryPurple,
+                                        side: BorderSide(
+                                          color: isSelected ? AppTheme.secondaryPurple : AppTheme.borderGray,
+                                          width: 1.5,
+                                        ),
+                                        labelStyle: TextStyle(
+                                          color: isSelected ? Colors.white : AppTheme.textGray,
+                                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                                          fontSize: 13,
+                                        ),
+                                      );
                                     },
-                                    backgroundColor: isSelected 
-                                        ? AppTheme.secondaryPurple 
-                                        : AppTheme.backgroundLight,
-                                    selectedColor: AppTheme.secondaryPurple,
-                                    labelStyle: TextStyle(
-                                      color: isSelected ? Colors.white : AppTheme.textGray,
-                                      fontWeight: FontWeight.w500,
-                                      fontSize: 13,
-                                    ),
                                   );
                                 },
-                              );
-                            },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      // Active filter indicator
+                      if (selectedTime != 'All')
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.filter_list,
+                                size: 14,
+                                color: AppTheme.secondaryPurple.withOpacity(0.7),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                feedArticlesAsync.maybeWhen(
+                                  data: (articles) => 'Showing ${articles.length} article${articles.length == 1 ? '' : 's'} from last $selectedTime',
+                                  orElse: () => 'Filtering by last $selectedTime',
+                                ),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppTheme.secondaryPurple.withOpacity(0.7),
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ],
               ),
             ),
             
-            // Article Swiper
+            // Article List (Scrollable)
             Expanded(
               child: feedArticlesAsync.when(
                 data: (articles) {
@@ -216,230 +300,48 @@ Shared via CatchUp
                     );
                   }
 
-                  if (currentIndex >= articles.length) {
-                    // All articles viewed
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.check_circle_outline,
-                            size: 64,
-                            color: AppTheme.successGreen,
-                          ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'You\'re all caught up!',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '${articles.length} articles read',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              color: AppTheme.textGray,
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              ref.read(currentArticleIndexProvider.notifier).state = 0;
-                              ref.read(feedArticlesProvider.notifier).refresh();
-                            },
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Refresh Feed'),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  // Show current article with swipe
-                  return Stack(
-                    children: [
-                      // Swipeable Card with visual indicators
-                      CardSwiper(
-                        controller: _swiperController,
-                        cardsCount: articles.length - currentIndex,
-                        numberOfCardsDisplayed: 1,
-                        backCardOffset: const Offset(0, 0),
-                        padding: const EdgeInsets.all(16),
-                        duration: const Duration(milliseconds: 250),
-                        maxAngle: 25,
-                        threshold: 80,
-                        scale: 0.95,
-                        isLoop: false,
-                        allowedSwipeDirection: const AllowedSwipeDirection.symmetric(
-                          horizontal: true,
-                          vertical: false,
-                        ),
-                        onSwipe: (previousIndex, currentIndex2, direction) {
-                          final article = articles[currentIndex + previousIndex];
-                          
-                          if (direction == CardSwiperDirection.right) {
-                            // Swipe RIGHT = SAVE to collection
-                            print('✓ Swiped RIGHT - Saving article: ${article.title}');
-                            // Add haptic feedback
-                            HapticFeedback.mediumImpact();
-                            // Show modal after a brief delay for better UX
-                            Future.delayed(const Duration(milliseconds: 100), () {
-                              if (context.mounted) {
-                                _showSaveToCollectionModal(context, article);
-                              }
-                            });
-                          } else if (direction == CardSwiperDirection.left) {
-                            // Swipe LEFT = DISMISS/SKIP
-                            print('✗ Swiped LEFT - Skipping article: ${article.title}');
-                            // Add haptic feedback
-                            HapticFeedback.lightImpact();
-                          }
-                          
-                          // Move to next article
-                          final nextIndex = currentIndex + previousIndex + 1;
-                          ref.read(currentArticleIndexProvider.notifier).state = nextIndex;
-                          return true;
-                        },
-                        onEnd: () {
-                          // All articles swiped
-                          ref.read(currentArticleIndexProvider.notifier).state = articles.length;
-                        },
-                        cardBuilder: (context, index, horizontalOffsetPercentage, verticalOffsetPercentage) {
-                          final article = articles[currentIndex + index];
-                          final isLiked = likedArticles.contains(article.id);
-                          
-                          return Stack(
-                            children: [
-                              // Article Card
-                              ScrollableArticleCard(
-                                article: article,
-                                isLiked: isLiked,
-                                onBookmark: () {
-                                  _showSaveToCollectionModal(context, article);
-                                },
-                                onLike: () {
-                                  ref.read(likedArticlesProvider.notifier).toggleLike(article.id);
-                                },
-                                onShare: () {
-                                  _shareArticle(article);
-                                },
-                              ),
-                              
-                              // Swipe indicators with enhanced visibility
-                              if (horizontalOffsetPercentage > 0) ...[
-                                // Swiping RIGHT - Show SAVE indicator
-                                Positioned(
-                                  top: 80,
-                                  left: 30,
-                                  child: Opacity(
-                                    opacity: (horizontalOffsetPercentage * 1.5).clamp(0.0, 1.0).toDouble(),
-                                    child: Transform.scale(
-                                      scale: 0.7 + (horizontalOffsetPercentage * 0.8),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                        decoration: BoxDecoration(
-                                          color: AppTheme.successGreen,
-                                          borderRadius: BorderRadius.circular(30),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: AppTheme.successGreen.withOpacity(0.5),
-                                              blurRadius: 20,
-                                              spreadRadius: 2,
-                                            ),
-                                          ],
-                                        ),
-                                        child: const Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(Icons.bookmark_add, color: Colors.white, size: 28),
-                                            SizedBox(width: 12),
-                                            Text(
-                                              'SAVE',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 20,
-                                                letterSpacing: 1.2,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ] else if (horizontalOffsetPercentage < 0) ...[
-                                // Swiping LEFT - Show SKIP indicator
-                                Positioned(
-                                  top: 80,
-                                  right: 30,
-                                  child: Opacity(
-                                    opacity: ((-horizontalOffsetPercentage) * 1.5).clamp(0.0, 1.0).toDouble(),
-                                    child: Transform.scale(
-                                      scale: 0.7 + ((-horizontalOffsetPercentage) * 0.8),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                        decoration: BoxDecoration(
-                                          color: AppTheme.errorRed,
-                                          borderRadius: BorderRadius.circular(30),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: AppTheme.errorRed.withOpacity(0.5),
-                                              blurRadius: 20,
-                                              spreadRadius: 2,
-                                            ),
-                                          ],
-                                        ),
-                                        child: const Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(Icons.close_rounded, color: Colors.white, size: 28),
-                                            SizedBox(width: 12),
-                                            Text(
-                                              'SKIP',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 20,
-                                                letterSpacing: 1.2,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          );
-                        },
-                      ),
+                  // Vertical page view of articles
+                  return PageView.builder(
+                    controller: _pageController,
+                    scrollDirection: Axis.vertical,
+                    itemCount: articles.length,
+                    onPageChanged: (index) {
+                      setState(() {
+                        _currentPageIndex = index;
+                      });
+                      print('📖 Viewing article ${index + 1}/${articles.length}');
+                    },
+                    itemBuilder: (context, index) {
+                      final article = articles[index];
+                      final isLiked = likedArticles.contains(article.id);
                       
-                      // Progress Indicator at Bottom
-                      Positioned(
-                        left: 16,
-                        right: 16,
-                        bottom: 16,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.6),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child:                           Text(
-                            '${currentIndex + 1}/${articles.length}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                      return ArticleCard(
+                        article: article,
+                        isLiked: isLiked,
+                        currentIndex: index + 1,
+                        totalCount: articles.length,
+                        onSwipeRight: () {
+                          print('✓ Saving article: ${article.title}');
+                          _showSaveToCollectionModal(context, article);
+                        },
+                        onSwipeLeft: () {
+                          print('✗ Rejecting article: ${article.title}');
+                          // Move to next article
+                          if (index < articles.length - 1) {
+                            _pageController.nextPage(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOut,
+                            );
+                          }
+                        },
+                        onAskAI: () {
+                          _openAskAIWithArticle(context, article);
+                        },
+                        onLike: () {
+                          ref.read(likedArticlesProvider.notifier).toggleLike(article.id);
+                        },
+                      );
+                    },
                   );
                 },
                 loading: () => Center(
@@ -501,4 +403,3 @@ Shared via CatchUp
     );
   }
 }
-

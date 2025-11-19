@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/services/logger_service.dart';
 import '../providers/auth_provider.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
@@ -12,6 +13,7 @@ class SignupScreen extends ConsumerStatefulWidget {
 }
 
 class _SignupScreenState extends ConsumerState<SignupScreen> {
+  final LoggerService _logger = LoggerService();
   final _formKey = GlobalKey<FormState>();
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
@@ -37,6 +39,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   Future<void> _handleSignup() async {
     if (!_formKey.currentState!.validate()) return;
 
+    _logger.info('Attempting signup: ${_emailController.text.trim()}', category: 'Auth');
     setState(() => _isLoading = true);
 
     try {
@@ -51,10 +54,12 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             : _phoneController.text.trim(),
       );
 
+      _logger.success('Signup successful: ${_firstNameController.text.trim()} ${_lastNameController.text.trim()}', category: 'Auth');
       if (mounted) {
         Navigator.of(context).pushReplacementNamed('/home');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      _logger.error('Signup failed', category: 'Auth', error: e, stackTrace: stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -71,6 +76,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   }
 
   Future<void> _handleGoogleSignup() async {
+    _logger.info('Attempting Google signup', category: 'Auth');
     setState(() => _isLoading = true);
 
     try {
@@ -78,9 +84,13 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       final success = await authService.signInWithGoogle();
 
       if (success && mounted) {
+        _logger.success('Google signup successful', category: 'Auth');
         Navigator.of(context).pushReplacementNamed('/home');
+      } else {
+        _logger.warning('Google signup cancelled by user', category: 'Auth');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      _logger.error('Google signup failed', category: 'Auth', error: e, stackTrace: stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

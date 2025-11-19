@@ -5,6 +5,7 @@ import '../../../../shared/models/article_model.dart';
 import '../../../../shared/models/source_model.dart';
 import '../../../../shared/services/rss_feed_service.dart';
 import '../../../../shared/services/article_cache_service.dart';
+import '../../../../shared/services/logger_service.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
 
 // Services
@@ -24,6 +25,7 @@ class RssFeedNotifier extends StateNotifier<AsyncValue<List<ArticleModel>>> {
   final RssFeedService _rssService;
   final ArticleCacheService _cacheService;
   final Ref _ref;
+  final LoggerService _logger = LoggerService();
   
   bool _isRefreshing = false;
   
@@ -37,12 +39,24 @@ class RssFeedNotifier extends StateNotifier<AsyncValue<List<ArticleModel>>> {
       userSourcesProvider,
       (previous, next) {
         next.whenData((sources) {
-          print('🔄 Sources changed! Active sources: ${sources.where((s) => s.active).map((s) => s.name).toList()}');
+          _logger.info('Sources changed! Active sources: ${sources.where((s) => s.active).map((s) => s.name).toList()}', category: 'Feed');
           // Clear cache and reload immediately
           _cacheService.clearCache().then((_) => _loadArticles());
         });
       },
       fireImmediately: true,
+    );
+    
+    // Watch topic filter and reload when it changes
+    _ref.listen<String?>(
+      selectedTopicFilterProvider,
+      (previous, next) {
+        if (previous != next) {
+          _logger.info('Topic filter changed! New topic: ${next ?? "All Sources"}', category: 'Feed');
+          // Clear cache and reload immediately
+          _cacheService.clearCache().then((_) => _loadArticles());
+        }
+      },
     );
   }
 
@@ -57,7 +71,7 @@ class RssFeedNotifier extends StateNotifier<AsyncValue<List<ArticleModel>>> {
       
       if (isCacheFresh && cachedArticles != null && cachedArticles.isNotEmpty) {
         // Cache is fresh, use it immediately
-        print('Using fresh cache (${cachedArticles.length} articles)');
+        _logger.info('Using fresh cache (${cachedArticles.length} articles)', category: 'Feed');
         state = AsyncValue.data(cachedArticles);
         return;
       }
@@ -65,7 +79,7 @@ class RssFeedNotifier extends StateNotifier<AsyncValue<List<ArticleModel>>> {
       // Step 2: Show cached data while fetching (if available)
       if (cachedArticles != null && cachedArticles.isNotEmpty) {
         final cacheAge = await _cacheService.getCacheAgeMinutes();
-        print('Showing cached data (${cacheAge ?? 0} minutes old) while fetching fresh...');
+        _logger.info('Showing cached data (${cacheAge ?? 0} minutes old) while fetching fresh', category: 'Feed');
         state = AsyncValue.data(cachedArticles);
       }
       
@@ -73,12 +87,12 @@ class RssFeedNotifier extends StateNotifier<AsyncValue<List<ArticleModel>>> {
       await _fetchFreshArticles();
       
     } catch (e, stack) {
-      print('Error loading articles: $e');
+      _logger.error('Error loading articles', category: 'Feed', error: e, stackTrace: stack);
       
       // Try to show cached data on error
       final cachedArticles = await _cacheService.getCachedArticles();
       if (cachedArticles != null && cachedArticles.isNotEmpty) {
-        print('Error occurred, using cached data');
+        _logger.warning('Error occurred, using cached data', category: 'Feed');
         state = AsyncValue.data(cachedArticles);
       } else {
         state = AsyncValue.error(e, stack);
@@ -92,10 +106,26 @@ class RssFeedNotifier extends StateNotifier<AsyncValue<List<ArticleModel>>> {
     await sourcesAsync.when(
       data: (sources) async {
         // Get only active sources
-        final activeSources = sources.where((s) => s.active).toList();
+        var activeSources = sources.where((s) => s.active).toList();
+        
+        // Apply topic filter if selected
+        final selectedTopic = _ref.read(selectedTopicFilterProvider);
+        if (selectedTopic != null) {
+          if (selectedTopic == 'friends') {
+            // Filter to sources added by friends (not current user)
+            // For now, show all sources as we don't track who added them yet
+            _logger.info('Friends filter selected (showing all for now)', category: 'Feed');
+          } else {
+            // Filter by topic
+            activeSources = activeSources.where((source) {
+              return source.topics != null && source.topics!.contains(selectedTopic);
+            }).toList();
+            _logger.info('Filtered to ${activeSources.length} sources with topic: $selectedTopic', category: 'Feed');
+          }
+        }
         
         if (activeSources.isEmpty) {
-          print('No active sources, showing empty state');
+          _logger.warning('No active sources matching filter, showing empty state', category: 'Feed');
           state = const AsyncValue.data([]);
           return;
         }
@@ -105,14 +135,14 @@ class RssFeedNotifier extends StateNotifier<AsyncValue<List<ArticleModel>>> {
             ? (activeSources.first.articleCount ?? 5) 
             : 5;
         
-        print('Fetching from ${sourceNames.length} active sources: $sourceNames (limit: $articleCount per source)');
+        _logger.info('Fetching from ${sourceNames.length} active sources: $sourceNames (limit: $articleCount per source)', category: 'Feed');
         
         // Progressive loading: Fetch each source individually and update UI
         final List<ArticleModel> allArticles = [];
         
         for (final source in activeSources) {
           try {
-            print('Fetching from ${source.name}...');
+            _logger.info('Fetching from ${source.name}...', category: 'Feed');
             final articles = await _rssService.fetchFromSource(
               source.name,
               limit: source.articleCount ?? 5,
@@ -126,31 +156,31 @@ class RssFeedNotifier extends StateNotifier<AsyncValue<List<ArticleModel>>> {
               
               // Progressive update: Show articles as they come in
               state = AsyncValue.data(List.from(allArticles));
-              print('✓ Added ${articles.length} articles from ${source.name} (total: ${allArticles.length})');
+              _logger.success('Added ${articles.length} articles from ${source.name} (total: ${allArticles.length})', category: 'Feed');
             }
           } catch (e) {
-            print('✗ Failed to fetch from ${source.name}: $e');
+            _logger.error('Failed to fetch from ${source.name}', category: 'Feed', error: e);
             // Continue with other sources
           }
         }
         
         // Final update
         if (allArticles.isNotEmpty) {
-          print('✓ Fetch complete! Total articles: ${allArticles.length}');
+          _logger.success('Fetch complete! Total articles: ${allArticles.length}', category: 'Feed');
           state = AsyncValue.data(allArticles);
           
           // Cache the results
           await _cacheService.cacheArticles(allArticles);
         } else {
-          print('No articles fetched from any source');
+          _logger.warning('No articles fetched from any source', category: 'Feed');
           state = const AsyncValue.data([]);
         }
       },
       loading: () {
-        print('Sources still loading...');
+        _logger.info('Sources still loading...', category: 'Feed');
       },
       error: (e, stack) {
-        print('Error with sources: $e');
+        _logger.error('Error with sources', category: 'Feed', error: e, stackTrace: stack);
         state = AsyncValue.error(e, stack);
       },
     );
@@ -159,12 +189,12 @@ class RssFeedNotifier extends StateNotifier<AsyncValue<List<ArticleModel>>> {
   /// Refresh articles (pull to refresh)
   Future<void> refresh() async {
     if (_isRefreshing) {
-      print('Already refreshing, skipping...');
+      _logger.info('Already refreshing, skipping...', category: 'Feed');
       return;
     }
     
     _isRefreshing = true;
-    print('Manual refresh triggered');
+    _logger.info('Manual refresh triggered', category: 'Feed');
     
     try {
       await _fetchFreshArticles();
@@ -175,7 +205,7 @@ class RssFeedNotifier extends StateNotifier<AsyncValue<List<ArticleModel>>> {
 
   /// Force refresh (ignore cache)
   Future<void> forceRefresh() async {
-    print('Force refresh: clearing cache');
+    _logger.info('Force refresh: clearing cache', category: 'Feed');
     await _cacheService.clearCache();
     await _loadArticles();
   }
@@ -192,14 +222,21 @@ class RssFeedNotifier extends StateNotifier<AsyncValue<List<ArticleModel>>> {
 // Client-side time filter
 final selectedTimeFilterProvider = StateProvider<String>((ref) => 'All');
 
+// Topic filter provider
+final selectedTopicFilterProvider = StateProvider<String?>((ref) => null);
+
 // Filtered articles based on time
 final filteredArticlesProvider = Provider<AsyncValue<List<ArticleModel>>>((ref) {
+  final logger = LoggerService();
   final articlesAsync = ref.watch(feedArticlesProvider);
   final timeFilter = ref.watch(selectedTimeFilterProvider);
   
   return articlesAsync.when(
     data: (articles) {
+      logger.info('TIME FILTER: Selected=$timeFilter, Total=${articles.length}', category: 'Feed');
+      
       if (timeFilter == 'All') {
+        logger.info('Showing all articles (no filter)', category: 'Feed');
         return AsyncValue.data(articles);
       }
       
@@ -210,24 +247,30 @@ final filteredArticlesProvider = Provider<AsyncValue<List<ArticleModel>>>((ref) 
       switch (timeFilter) {
         case '2h':
           cutoff = now.subtract(const Duration(hours: 2));
+          logger.info('Cutoff time (2h): $cutoff', category: 'Feed');
           break;
         case '6h':
           cutoff = now.subtract(const Duration(hours: 6));
+          logger.info('Cutoff time (6h): $cutoff', category: 'Feed');
           break;
         case '24h':
           cutoff = now.subtract(const Duration(hours: 24));
+          logger.info('Cutoff time (24h): $cutoff', category: 'Feed');
           break;
         default:
           cutoff = DateTime(2000); // Show all
+          logger.info('Showing all (default)', category: 'Feed');
       }
       
       // Filter articles
       final filtered = articles.where((article) {
         final pubDate = article.publishedAt ?? DateTime.now();
-        return pubDate.isAfter(cutoff);
+        final passes = pubDate.isAfter(cutoff);
+        return passes;
       }).toList();
       
-      print('Time filter $timeFilter: ${filtered.length} of ${articles.length} articles');
+      logger.success('Filtered result: ${filtered.length} of ${articles.length} articles (removed: ${articles.length - filtered.length})', category: 'Feed');
+      
       return AsyncValue.data(filtered);
     },
     loading: () => const AsyncValue.loading(),

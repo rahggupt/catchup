@@ -7,6 +7,12 @@ import '../../../../shared/models/collection_model.dart';
 import '../../../../shared/services/supabase_service.dart';
 import '../providers/collections_provider.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
+import '../widgets/collection_privacy_modal.dart';
+import '../widgets/share_collection_modal.dart';
+import '../widgets/edit_collection_modal.dart';
+import '../widgets/collection_members_modal.dart';
+import '../widgets/create_collection_modal.dart';
+import 'collection_details_screen.dart';
 
 class CollectionsScreen extends ConsumerWidget {
   const CollectionsScreen({super.key});
@@ -95,7 +101,12 @@ class CollectionsScreen extends ConsumerWidget {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // TODO: Create collection modal
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (context) => const CreateCollectionModal(),
+          );
         },
         backgroundColor: AppTheme.primaryBlue,
         child: const Icon(Icons.add),
@@ -108,6 +119,52 @@ class _CollectionCard extends ConsumerWidget {
   final CollectionModel collection;
 
   const _CollectionCard({required this.collection});
+
+  void _shareCollection(BuildContext context) {
+    // Show share modal
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => ShareCollectionModal(collection: collection),
+    );
+  }
+
+  void _editCollection(BuildContext context, WidgetRef ref) {
+    // Show comprehensive edit modal
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => EditCollectionModal(collection: collection),
+    ).then((updated) {
+      if (updated == true) {
+        // Refresh collections if updated
+        ref.invalidate(userCollectionsProvider);
+      }
+    });
+  }
+  
+  void _showMembers(BuildContext context) {
+    // Show members management modal
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => CollectionMembersModal(collection: collection),
+    );
+  }
+
+  void _showPrivacySettings(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => CollectionPrivacyModal(
+        collection: collection,
+      ),
+    );
+  }
 
   Future<void> _deleteCollection(BuildContext context, WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
@@ -163,29 +220,40 @@ class _CollectionCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Cover Image
-          if (collection.coverImage != null)
-            Container(
-              height: 120,
-              decoration: BoxDecoration(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(12),
-                ),
-                image: DecorationImage(
-                  image: NetworkImage(collection.coverImage!),
-                  fit: BoxFit.cover,
+      child: InkWell(
+        onTap: () {
+          // Navigate to collection details screen
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => CollectionDetailsScreen(collection: collection),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Cover Image
+            if (collection.coverImage != null)
+              Container(
+                height: 120,
+                decoration: BoxDecoration(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(12),
+                  ),
+                  image: DecorationImage(
+                    image: NetworkImage(collection.coverImage!),
+                    fit: BoxFit.cover,
+                  ),
                 ),
               ),
-            ),
-          // Content
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+            // Content
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                 Row(
                   children: [
                     Expanded(
@@ -202,9 +270,25 @@ class _CollectionCard extends ConsumerWidget {
                       onSelected: (value) {
                         if (value == 'delete') {
                           _deleteCollection(context, ref);
+                        } else if (value == 'share') {
+                          _shareCollection(context);
+                        } else if (value == 'edit') {
+                          _editCollection(context, ref);
+                        } else if (value == 'members') {
+                          _showMembers(context);
                         }
                       },
                       itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'members',
+                          child: Row(
+                            children: [
+                              Icon(Icons.people, size: 18),
+                              SizedBox(width: 12),
+                              Text('Manage Members'),
+                            ],
+                          ),
+                        ),
                         const PopupMenuItem(
                           value: 'share',
                           child: Row(
@@ -269,24 +353,56 @@ class _CollectionCard extends ConsumerWidget {
                   ),
                 ],
                 const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppTheme.backgroundLight,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    collection.privacyLabel,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
+                _buildPrivacyBadge(collection.privacy),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildPrivacyBadge(String privacy) {
+    IconData icon;
+    Color color;
+    String label;
+    
+    switch (privacy) {
+      case 'public':
+        icon = Icons.public;
+        color = Colors.green;
+        label = 'Public';
+        break;
+      case 'invite':
+        icon = Icons.people;
+        color = Colors.orange;
+        label = 'Invite-Only';
+        break;
+      default:
+        icon = Icons.lock;
+        color = AppTheme.primaryBlue;
+        label = 'Private';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: color,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],

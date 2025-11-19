@@ -5,24 +5,19 @@ import '../../../../shared/models/user_model.dart';
 import '../../../../shared/models/source_model.dart';
 import '../../../../shared/services/mock_data_service.dart';
 import '../../../../shared/services/supabase_service.dart';
+import '../../../../shared/services/logger_service.dart';
 
 // Supabase service provider
 final supabaseServiceProvider = Provider((ref) => SupabaseService());
 
 // Current logged-in user provider
 final profileUserProvider = FutureProvider.autoDispose<UserModel>((ref) async {
-  // Check if in mock mode
-  if (AppConstants.supabaseUrl.isEmpty || AppConstants.supabaseAnonKey.isEmpty) {
-    return MockDataService.getMockUser();
-  }
-  
   try {
     // Get current auth user
     final authUser = SupabaseConfig.client.auth.currentUser;
     
     if (authUser == null) {
-      // Not logged in, return mock user
-      return MockDataService.getMockUser();
+      throw Exception('User not logged in');
     }
     
     // Get user profile from database
@@ -53,30 +48,50 @@ final profileUserProvider = FutureProvider.autoDispose<UserModel>((ref) async {
     );
   } catch (e) {
     print('Error loading user profile: $e');
-    return MockDataService.getMockUser();
+    rethrow; // Let error bubble up to UI
   }
 });
 
 // Helper function to get real stats from database
 Future<Map<String, int>> _getRealStats(SupabaseService service, String userId) async {
+  final logger = LoggerService();
   try {
+    logger.info('Calculating profile stats for user: $userId', category: 'Profile');
     final client = SupabaseConfig.client;
     
-    // Count collections
+    // Count collections owned by the user
     final collectionsResponse = await client
         .from('collections')
         .select('id')
         .eq('owner_id', userId);
     final collectionsCount = (collectionsResponse as List).length;
+    logger.info('Found $collectionsCount collections owned by user', category: 'Profile');
     
     // Count articles in user's collections
-    final articlesResponse = await client
-        .from('collection_articles')
-        .select('id')
-        .inFilter('collection_id', collectionsResponse.map((c) => c['id']).toList());
-    final articlesCount = (articlesResponse as List).length;
+    int articlesCount = 0;
+    if (collectionsCount > 0) {
+      final collectionIds = collectionsResponse.map((c) => c['id']).toList();
+      try {
+        final articlesResponse = await client
+            .from('collection_articles')
+            .select('article_id')
+            .inFilter('collection_id', collectionIds);
+        
+        // Count unique article IDs
+        final uniqueArticleIds = <String>{};
+        for (final item in (articlesResponse as List)) {
+          if (item['article_id'] != null) {
+            uniqueArticleIds.add(item['article_id'].toString());
+          }
+        }
+        articlesCount = uniqueArticleIds.length;
+        logger.info('Found $articlesCount unique articles across collections', category: 'Profile');
+      } catch (e, stackTrace) {
+        logger.error('Failed to count articles', category: 'Profile', error: e, stackTrace: stackTrace);
+      }
+    }
     
-    // Chats count (if you have a chats table)
+    // Count chats created by the user
     int chatsCount = 0;
     try {
       final chatsResponse = await client
@@ -84,50 +99,87 @@ Future<Map<String, int>> _getRealStats(SupabaseService service, String userId) a
           .select('id')
           .eq('user_id', userId);
       chatsCount = (chatsResponse as List).length;
+      logger.info('Found $chatsCount chats created by user', category: 'Profile');
     } catch (e) {
-      // Chats table might not exist
-      print('Chats table not found: $e');
+      logger.warning('Chats table not found or empty', category: 'Profile');
     }
     
-    print('Real stats: collections=$collectionsCount, articles=$articlesCount, chats=$chatsCount');
+    logger.success('Profile stats verified: collections=$collectionsCount, articles=$articlesCount, chats=$chatsCount', category: 'Profile');
     
     return {
       'collections': collectionsCount,
       'articles': articlesCount,
       'chats': chatsCount,
     };
-  } catch (e) {
-    print('Error getting real stats: $e');
+  } catch (e, stackTrace) {
+    logger.error('Failed to calculate profile stats', category: 'Profile', error: e, stackTrace: stackTrace);
     return {'collections': 0, 'articles': 0, 'chats': 0};
   }
 }
 
 // User sources provider
 final userSourcesProvider = FutureProvider.autoDispose<List<SourceModel>>((ref) async {
-  // Check if in mock mode
-  if (AppConstants.supabaseUrl.isEmpty || AppConstants.supabaseAnonKey.isEmpty) {
-    return MockDataService.getMockSources();
-  }
-  
   try {
     final authUser = SupabaseConfig.client.auth.currentUser;
     
     if (authUser == null) {
-      return MockDataService.getMockSources();
+      print('No authenticated user, returning empty sources');
+      return [];
     }
     
     final supabaseService = ref.read(supabaseServiceProvider);
     final sources = await supabaseService.getUserSources(authUser.id);
     
-    // If no sources, return mock sources for demo
-    if (sources.isEmpty) {
-      return MockDataService.getMockSources();
+    // Remove duplicates by URL (client-side backup)
+    final uniqueSources = <String, SourceModel>{};
+    for (final source in sources) {
+      uniqueSources[source.url] = source; // Overwrites duplicates, keeping the last one
+    }
+    final dedupedSources = uniqueSources.values.toList();
+    
+    if (dedupedSources.length != sources.length) {
+      print('⚠️  Removed ${sources.length - dedupedSources.length} duplicate sources');
     }
     
-    return sources;
+    print('Loaded ${dedupedSources.length} sources from database');
+    return dedupedSources;
   } catch (e) {
     print('Error loading sources: $e');
-    return MockDataService.getMockSources();
+    // Return empty list instead of mock data
+    return [];
+  }
+});
+
+// User AI configuration provider
+final userAIConfigProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final logger = LoggerService();
+  try {
+    final user = SupabaseConfig.client.auth.currentUser;
+    if (user == null) {
+      logger.info('No authenticated user, returning default AI config', category: 'Profile');
+      return {'provider': 'gemini', 'api_key': null};
+    }
+    
+    logger.info('Fetching AI config for user: ${user.id}', category: 'Profile');
+    final supabaseService = SupabaseService();
+    final userData = await supabaseService.getUser(user.id);
+    
+    if (userData == null) {
+      logger.warning('User data not found, returning default AI config', category: 'Profile');
+      return {'provider': 'gemini', 'api_key': null};
+    }
+    
+    // Access aiProvider directly from UserModel
+    final aiProviderConfig = userData.aiProvider;
+    
+    logger.success('AI config loaded: provider=${aiProviderConfig.provider}', category: 'Profile');
+    return {
+      'provider': aiProviderConfig.provider,
+      'api_key': aiProviderConfig.apiKey,
+    };
+  } catch (e, stackTrace) {
+    logger.error('Failed to fetch AI config', category: 'Profile', error: e, stackTrace: stackTrace);
+    return {'provider': 'gemini', 'api_key': null};
   }
 });
 

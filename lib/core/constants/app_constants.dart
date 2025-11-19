@@ -1,34 +1,42 @@
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 /// Application-wide constants
 class AppConstants {
   // App Info
   static const String appName = 'CatchUp';
   static const String appVersion = '1.0.0';
   
-  // API Endpoints (to be configured)
-  static const String supabaseUrl = String.fromEnvironment(
-    'SUPABASE_URL',
-    defaultValue: '',
-  );
-  static const String supabaseAnonKey = String.fromEnvironment(
-    'SUPABASE_ANON_KEY',
-    defaultValue: '',
-  );
-  static const String geminiApiKey = String.fromEnvironment(
-    'GEMINI_API_KEY',
-    defaultValue: '',
-  );
-  static const String qdrantUrl = String.fromEnvironment(
-    'QDRANT_URL',
-    defaultValue: '',
-  );
-  static const String qdrantApiKey = String.fromEnvironment(
-    'QDRANT_API_KEY',
-    defaultValue: '',
-  );
-  static const String huggingFaceApiKey = String.fromEnvironment(
-    'HUGGINGFACE_API_KEY',
-    defaultValue: '',
-  );
+  // Debug Mode (set via --dart-define=DEBUG_MODE=true when building APK)
+  static const bool debugMode = bool.fromEnvironment('DEBUG_MODE', defaultValue: false);
+  
+  // API Endpoints (loaded from .env or compile-time environment)
+  static String get supabaseUrl => 
+    dotenv.env['SUPABASE_URL'] ?? 
+    const String.fromEnvironment('SUPABASE_URL', defaultValue: '');
+    
+  static String get supabaseAnonKey => 
+    dotenv.env['SUPABASE_ANON_KEY'] ?? 
+    const String.fromEnvironment('SUPABASE_ANON_KEY', defaultValue: '');
+    
+  static String get geminiApiKey => 
+    dotenv.env['GEMINI_API_KEY'] ?? 
+    const String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
+    
+  static String get qdrantUrl => 
+    dotenv.env['QDRANT_API_URL'] ?? 
+    const String.fromEnvironment('QDRANT_URL', defaultValue: '');
+    
+  static String get qdrantApiKey => 
+    dotenv.env['QDRANT_API_KEY'] ?? 
+    const String.fromEnvironment('QDRANT_API_KEY', defaultValue: '');
+    
+  static String get huggingFaceApiKey => 
+    dotenv.env['HUGGING_FACE_API_KEY'] ?? 
+    const String.fromEnvironment('HUGGINGFACE_API_KEY', defaultValue: '');
+    
+  static String get perplexityApiKey => 
+    dotenv.env['PERPLEXITY_API_KEY'] ?? 
+    const String.fromEnvironment('PERPLEXITY_API_KEY', defaultValue: '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');
   
   // Pagination
   static const int feedPageSize = 20;
@@ -44,9 +52,10 @@ class AppConstants {
   static const Duration uploadTimeout = Duration(minutes: 5);
   
   // AI
-  static const String defaultAiProvider = 'gemini';
+  static const String defaultAiProvider = 'perplexity'; // 'gemini' or 'perplexity'
   static const int maxTokens = 2000;
   static const double temperature = 0.7;
+  static const String perplexityModel = 'sonar';
   
   // Embeddings
   static const String embeddingModel = 'sentence-transformers/all-MiniLM-L6-v2';
