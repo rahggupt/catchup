@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/config/supabase_config.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../shared/models/article_model.dart';
@@ -225,19 +226,27 @@ final selectedTimeFilterProvider = StateProvider<String>((ref) => 'All');
 // Topic filter provider
 final selectedTopicFilterProvider = StateProvider<String?>((ref) => null);
 
-// Filtered articles based on time
+// Filtered articles based on time and rejected status
 final filteredArticlesProvider = Provider<AsyncValue<List<ArticleModel>>>((ref) {
   final logger = LoggerService();
   final articlesAsync = ref.watch(feedArticlesProvider);
   final timeFilter = ref.watch(selectedTimeFilterProvider);
+  final rejectedArticles = ref.watch(rejectedArticlesProvider);
   
   return articlesAsync.when(
     data: (articles) {
-      logger.info('TIME FILTER: Selected=$timeFilter, Total=${articles.length}', category: 'Feed');
+      logger.info('FILTERING: TimeFilter=$timeFilter, Total=${articles.length}, Rejected=${rejectedArticles.length}', category: 'Feed');
+      
+      // First, filter out rejected articles
+      var filtered = articles.where((article) => !rejectedArticles.contains(article.id)).toList();
+      final rejectedCount = articles.length - filtered.length;
+      if (rejectedCount > 0) {
+        logger.info('Filtered out $rejectedCount rejected articles', category: 'Feed');
+      }
       
       if (timeFilter == 'All') {
-        logger.info('Showing all articles (no filter)', category: 'Feed');
-        return AsyncValue.data(articles);
+        logger.info('Showing all non-rejected articles (no time filter)', category: 'Feed');
+        return AsyncValue.data(filtered);
       }
       
       // Calculate cutoff time
@@ -262,14 +271,14 @@ final filteredArticlesProvider = Provider<AsyncValue<List<ArticleModel>>>((ref) 
           logger.info('Showing all (default)', category: 'Feed');
       }
       
-      // Filter articles
-      final filtered = articles.where((article) {
+      // Filter articles by time
+      filtered = filtered.where((article) {
         final pubDate = article.publishedAt ?? DateTime.now();
         final passes = pubDate.isAfter(cutoff);
         return passes;
       }).toList();
       
-      logger.success('Filtered result: ${filtered.length} of ${articles.length} articles (removed: ${articles.length - filtered.length})', category: 'Feed');
+      logger.success('Final filtered result: ${filtered.length} of ${articles.length} articles', category: 'Feed');
       
       return AsyncValue.data(filtered);
     },
@@ -309,6 +318,59 @@ class LikedArticlesNotifier extends StateNotifier<Set<String>> {
 
   bool isLiked(String articleId) {
     return state.contains(articleId);
+  }
+}
+
+// Rejected articles provider with persistence
+final rejectedArticlesProvider = StateNotifierProvider<RejectedArticlesNotifier, Set<String>>((ref) {
+  return RejectedArticlesNotifier();
+});
+
+class RejectedArticlesNotifier extends StateNotifier<Set<String>> {
+  final LoggerService _logger = LoggerService();
+  static const String _storageKey = 'rejected_articles';
+
+  RejectedArticlesNotifier() : super({}) {
+    _loadRejectedArticles();
+  }
+
+  Future<void> _loadRejectedArticles() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rejectedList = prefs.getStringList(_storageKey) ?? [];
+      state = rejectedList.toSet();
+      _logger.info('Loaded ${state.length} rejected articles from storage', category: 'Feed');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to load rejected articles', category: 'Feed', error: e, stackTrace: stackTrace);
+    }
+  }
+
+  Future<void> _saveRejectedArticles() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_storageKey, state.toList());
+      _logger.info('Saved ${state.length} rejected articles to storage', category: 'Feed');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to save rejected articles', category: 'Feed', error: e, stackTrace: stackTrace);
+    }
+  }
+
+  void rejectArticle(String articleId) {
+    _logger.info('Marking article as rejected: $articleId', category: 'Feed');
+    final newState = Set<String>.from(state);
+    newState.add(articleId);
+    state = newState;
+    _saveRejectedArticles();
+  }
+
+  bool isRejected(String articleId) {
+    return state.contains(articleId);
+  }
+
+  Future<void> clearRejectedArticles() async {
+    _logger.info('Clearing all rejected articles', category: 'Feed');
+    state = {};
+    _saveRejectedArticles();
   }
 }
 

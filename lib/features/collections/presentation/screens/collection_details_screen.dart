@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/models/collection_model.dart';
 import '../../../../shared/models/article_model.dart';
@@ -385,6 +386,55 @@ class _ArticleCard extends StatelessWidget {
     required this.onRemove,
   });
 
+  Future<void> _openArticleWebview(BuildContext context) async {
+    final logger = LoggerService();
+    final url = article['url'] as String?;
+    
+    if (url == null || url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Article URL not available'),
+          backgroundColor: AppTheme.errorRed,
+        ),
+      );
+      return;
+    }
+    
+    logger.info('Opening article URL: $url', category: 'Collections');
+    
+    final uri = Uri.parse(url);
+    
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(
+          uri,
+          mode: LaunchMode.inAppWebView,
+        );
+        logger.success('Opened article in webview', category: 'Collections');
+      } else {
+        logger.error('Could not launch URL: $url', category: 'Collections');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not open article'),
+              backgroundColor: AppTheme.errorRed,
+            ),
+          );
+        }
+      }
+    } catch (e, stackTrace) {
+      logger.error('Error launching URL', category: 'Collections', error: e, stackTrace: stackTrace);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error opening article'),
+            backgroundColor: AppTheme.errorRed,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final title = article['title'] as String? ?? 'Untitled';
@@ -395,9 +445,7 @@ class _ArticleCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
-        onTap: () {
-          // TODO: Open article details or web view
-        },
+        onTap: () => _openArticleWebview(context),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(12),
