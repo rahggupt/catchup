@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/models/article_model.dart';
 import '../../../../shared/services/logger_service.dart';
@@ -362,14 +363,58 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              content,
-                              style: TextStyle(
-                                color: isUser ? Colors.white : AppTheme.textDark,
-                                fontSize: 15,
-                                height: 1.4,
+                            // Use Markdown for AI responses, plain text for user messages
+                            if (isUser)
+                              Text(
+                                content,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  height: 1.4,
+                                ),
+                              )
+                            else
+                              MarkdownBody(
+                                data: content,
+                                styleSheet: MarkdownStyleSheet(
+                                  p: const TextStyle(
+                                    color: AppTheme.textDark,
+                                    fontSize: 15,
+                                    height: 1.4,
+                                  ),
+                                  strong: const TextStyle(
+                                    color: AppTheme.textDark,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  em: const TextStyle(
+                                    color: AppTheme.textDark,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                  listBullet: const TextStyle(
+                                    color: AppTheme.textDark,
+                                  ),
+                                  code: TextStyle(
+                                    backgroundColor: AppTheme.backgroundLight.withOpacity(0.5),
+                                    color: AppTheme.textDark,
+                                    fontSize: 14,
+                                  ),
+                                  h1: const TextStyle(
+                                    color: AppTheme.textDark,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  h2: const TextStyle(
+                                    color: AppTheme.textDark,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  h3: const TextStyle(
+                                    color: AppTheme.textDark,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               ),
-                            ),
                             if (timeText != null) ...[
                               const SizedBox(height: 4),
                               Text(

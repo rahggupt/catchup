@@ -4,6 +4,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/services/logger_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Simplified article card with horizontal swipe gestures
 class ArticleCard extends StatefulWidget {
@@ -116,6 +117,42 @@ class _ArticleCardState extends State<ArticleCard> with SingleTickerProviderStat
     });
   }
 
+  Future<void> _openArticleWebview() async {
+    _logger.info('Opening article URL: ${widget.article.url}', category: 'Feed');
+    
+    final url = Uri.parse(widget.article.url);
+    
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(
+          url,
+          mode: LaunchMode.inAppWebView,
+        );
+        _logger.success('Opened article in webview', category: 'Feed');
+      } else {
+        _logger.error('Could not launch URL: ${widget.article.url}', category: 'Feed');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not open article'),
+              backgroundColor: AppTheme.errorRed,
+            ),
+          );
+        }
+      }
+    } catch (e, stackTrace) {
+      _logger.error('Error launching URL', category: 'Feed', error: e, stackTrace: stackTrace);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error opening article'),
+            backgroundColor: AppTheme.errorRed,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -159,10 +196,31 @@ class _ArticleCardState extends State<ArticleCard> with SingleTickerProviderStat
                       borderRadius: BorderRadius.circular(20),
                       child: Column(
                         children: [
+                          // Ask AI button at top
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            child: ElevatedButton.icon(
+                              onPressed: widget.onAskAI,
+                              icon: const Icon(Icons.psychology, size: 18),
+                              label: const Text('Ask AI'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.secondaryPurple,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 10,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                              ),
+                            ),
+                          ),
+                          
                           // Article image
                           if (widget.article.imageUrl != null)
                             SizedBox(
-                              height: 250,
+                              height: 180,
                               width: double.infinity,
                               child: CachedNetworkImage(
                                 imageUrl: widget.article.imageUrl!,
@@ -184,9 +242,9 @@ class _ArticleCardState extends State<ArticleCard> with SingleTickerProviderStat
                               ),
                             ),
 
-                          // Content area (scrollable)
+                          // Content area (non-scrollable, fixed height)
                           Expanded(
-                            child: SingleChildScrollView(
+                            child: Padding(
                               padding: const EdgeInsets.all(20),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -225,14 +283,18 @@ class _ArticleCardState extends State<ArticleCard> with SingleTickerProviderStat
                                   ),
                                   const SizedBox(height: 16),
 
-                                  // Title
-                                  Text(
-                                    widget.article.title,
-                                    style: const TextStyle(
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppTheme.textDark,
-                                      height: 1.3,
+                                  // Title (clickable to open webview)
+                                  GestureDetector(
+                                    onTap: _openArticleWebview,
+                                    child: Text(
+                                      widget.article.title,
+                                      style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.primaryBlue,
+                                        height: 1.3,
+                                        decoration: TextDecoration.underline,
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(height: 12),
@@ -275,42 +337,6 @@ class _ArticleCardState extends State<ArticleCard> with SingleTickerProviderStat
                                       ),
                                     ),
 
-                                  const SizedBox(height: 24),
-
-                                  // Action buttons
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                    children: [
-                                      // Like button
-                                      IconButton(
-                                        onPressed: widget.onLike,
-                                        icon: Icon(
-                                          widget.isLiked ? Icons.favorite : Icons.favorite_border,
-                                          color: widget.isLiked ? AppTheme.errorRed : AppTheme.textGray,
-                                          size: 28,
-                                        ),
-                                      ),
-
-                                      // Ask AI button
-                                      ElevatedButton.icon(
-                                        onPressed: widget.onAskAI,
-                                        icon: const Icon(Icons.psychology, size: 20),
-                                        label: const Text('Ask AI'),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: AppTheme.secondaryPurple,
-                                          foregroundColor: Colors.white,
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 24,
-                                            vertical: 12,
-                                          ),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(25),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-
                                   const SizedBox(height: 16),
 
                                   // Article counter
@@ -341,24 +367,45 @@ class _ArticleCardState extends State<ArticleCard> with SingleTickerProviderStat
             Positioned(
               left: 40,
               top: 40,
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppTheme.successGreen,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.successGreen.withOpacity(0.5),
-                      blurRadius: 20,
-                      spreadRadius: 5,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppTheme.successGreen,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.successGreen.withOpacity(0.5),
+                          blurRadius: 20,
+                          spreadRadius: 5,
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.bookmark,
-                  color: Colors.white,
-                  size: 32,
-                ),
+                    child: const Icon(
+                      Icons.bookmark,
+                      color: Colors.white,
+                      size: 32,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppTheme.successGreen,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Text(
+                      'Add to Collection',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
 
@@ -367,24 +414,45 @@ class _ArticleCardState extends State<ArticleCard> with SingleTickerProviderStat
             Positioned(
               right: 40,
               top: 40,
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppTheme.errorRed,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.errorRed.withOpacity(0.5),
-                      blurRadius: 20,
-                      spreadRadius: 5,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppTheme.errorRed,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.errorRed.withOpacity(0.5),
+                          blurRadius: 20,
+                          spreadRadius: 5,
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.close,
-                  color: Colors.white,
-                  size: 32,
-                ),
+                    child: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 32,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppTheme.errorRed,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Text(
+                      'Not Interested',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
         ],

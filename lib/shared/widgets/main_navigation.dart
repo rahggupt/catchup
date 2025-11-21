@@ -13,6 +13,7 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
+  DateTime? _lastBackPressTime;
   
   final List<Widget> _screens = const [
     SwipeFeedScreen(),
@@ -21,11 +22,42 @@ class _MainNavigationState extends State<MainNavigation> {
     ProfileScreen(),
   ];
 
+  Future<bool> _onWillPop() async {
+    // If not on feed tab (index 0), navigate to feed tab
+    if (_currentIndex != 0) {
+      setState(() {
+        _currentIndex = 0;
+      });
+      return false; // Don't exit app
+    }
+    
+    // If on feed tab, check for double back press
+    final now = DateTime.now();
+    if (_lastBackPressTime == null ||
+        now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
+      _lastBackPressTime = now;
+      
+      // Show toast message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Press back again to exit'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      
+      return false; // Don't exit app
+    }
+    
+    return true; // Exit app on second back press within 2 seconds
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: _screens[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
+    return WillPopScope(
+      onWillPop: _onWillPop,
+      child: Scaffold(
+        body: _screens[_currentIndex],
+        bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) {
           setState(() {
@@ -55,6 +87,7 @@ class _MainNavigationState extends State<MainNavigation> {
             label: 'Profile',
           ),
         ],
+      ),
       ),
     );
   }

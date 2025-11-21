@@ -91,61 +91,7 @@ class FeedScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  
-                  // Time Filter Row
-                  Row(
-                    children: [
-                      const Text(
-                        'Time: ',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textGray,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: SizedBox(
-                          height: 36,
-                          child: Consumer(
-                            builder: (context, watchRef, _) {
-                              final selectedTime = watchRef.watch(selectedTimeFilterProvider);
-                              final timeFilters = ['2h', '6h', '24h', 'All'];
-                              
-                              return ListView.separated(
-                                scrollDirection: Axis.horizontal,
-                                itemCount: timeFilters.length,
-                                separatorBuilder: (_, __) => const SizedBox(width: 8),
-                                itemBuilder: (context, index) {
-                                  final filter = timeFilters[index];
-                                  final isSelected = filter == selectedTime;
-                                  return FilterChip(
-                                    label: Text(filter),
-                                    selected: isSelected,
-                                    onSelected: (_) {
-                                      ref.read(selectedTimeFilterProvider.notifier).state = filter;
-                                      ref.read(feedArticlesProvider.notifier).refresh();
-                                    },
-                                    backgroundColor: isSelected 
-                                        ? AppTheme.secondaryPurple 
-                                        : AppTheme.backgroundLight,
-                                    selectedColor: AppTheme.secondaryPurple,
-                                    labelStyle: TextStyle(
-                                      color: isSelected ? Colors.white : AppTheme.textGray,
-                                      fontWeight: FontWeight.w500,
-                                      fontSize: 13,
-                                    ),
-                                  );
-                                },
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   
                   // Topic Filter Chips
                   SizedBox(

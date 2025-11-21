@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/services/logger_service.dart';
+import '../../../../shared/utils/error_message_formatter.dart';
 import '../providers/rss_feed_provider.dart';
 import '../widgets/article_card.dart';
 import '../widgets/add_source_modal.dart';
@@ -67,7 +68,6 @@ class _SwipeFeedScreenState extends ConsumerState<SwipeFeedScreen> {
   @override
   Widget build(BuildContext context) {
     final feedArticlesAsync = ref.watch(filteredArticlesProvider);
-    final selectedTime = ref.watch(selectedTimeFilterProvider);
     final likedArticles = ref.watch(likedArticlesProvider);
 
     return Scaffold(
@@ -171,94 +171,6 @@ class _SwipeFeedScreenState extends ConsumerState<SwipeFeedScreen> {
                       },
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  
-                  // Time Filter Row with Active Indicator
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Text(
-                            'Time: ',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textGray,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: SizedBox(
-                              height: 36,
-                              child: Consumer(
-                                builder: (context, watchRef, _) {
-                                  final timeFilters = ['2h', '6h', '24h', 'All'];
-                                  
-                                  return ListView.separated(
-                                    scrollDirection: Axis.horizontal,
-                                    itemCount: timeFilters.length,
-                                    separatorBuilder: (_, __) => const SizedBox(width: 8),
-                                    itemBuilder: (context, index) {
-                                      final filter = timeFilters[index];
-                                      final isSelected = filter == selectedTime;
-                                      return FilterChip(
-                                        label: Text(filter),
-                                        selected: isSelected,
-                                        onSelected: (_) {
-                                          _logger.info('User selected time filter: $filter', category: 'Feed');
-                                          ref.read(selectedTimeFilterProvider.notifier).state = filter;
-                                        },
-                                        backgroundColor: isSelected 
-                                            ? AppTheme.secondaryPurple 
-                                            : Colors.white,
-                                        selectedColor: AppTheme.secondaryPurple,
-                                        side: BorderSide(
-                                          color: isSelected ? AppTheme.secondaryPurple : AppTheme.borderGray,
-                                          width: 1.5,
-                                        ),
-                                        labelStyle: TextStyle(
-                                          color: isSelected ? Colors.white : AppTheme.textGray,
-                                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                                          fontSize: 13,
-                                        ),
-                                      );
-                                    },
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      // Active filter indicator
-                      if (selectedTime != 'All')
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.filter_list,
-                                size: 14,
-                                color: AppTheme.secondaryPurple.withOpacity(0.7),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                feedArticlesAsync.maybeWhen(
-                                  data: (articles) => 'Showing ${articles.length} article${articles.length == 1 ? '' : 's'} from last $selectedTime',
-                                  orElse: () => 'Filtering by last $selectedTime',
-                                ),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppTheme.secondaryPurple.withOpacity(0.7),
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
                 ],
               ),
             ),
@@ -278,11 +190,9 @@ class _SwipeFeedScreenState extends ConsumerState<SwipeFeedScreen> {
                             color: AppTheme.textGray.withOpacity(0.5),
                           ),
                           const SizedBox(height: 16),
-                          Text(
-                            selectedTime != 'All' 
-                                ? 'No articles in last $selectedTime'
-                                : 'No articles available',
-                            style: const TextStyle(
+                          const Text(
+                            'No articles available',
+                            style: TextStyle(
                               fontSize: 16,
                               color: AppTheme.textGray,
                             ),
@@ -325,7 +235,9 @@ class _SwipeFeedScreenState extends ConsumerState<SwipeFeedScreen> {
                           _showSaveToCollectionModal(context, article);
                         },
                         onSwipeLeft: () {
-                          print('✗ Rejecting article: ${article.title}');
+                          _logger.info('Rejecting article: ${article.title}', category: 'Feed');
+                          // Mark article as rejected
+                          ref.read(rejectedArticlesProvider.notifier).rejectArticle(article.id);
                           // Move to next article
                           if (index < articles.length - 1) {
                             _pageController.nextPage(
@@ -378,7 +290,7 @@ class _SwipeFeedScreenState extends ConsumerState<SwipeFeedScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Check your internet connection',
+                        ErrorMessageFormatter.format(error),
                         style: TextStyle(
                           fontSize: 14,
                           color: AppTheme.textGray.withOpacity(0.8),

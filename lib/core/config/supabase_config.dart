@@ -15,6 +15,8 @@ class SupabaseConfig {
       anonKey: AppConstants.supabaseAnonKey,
       authOptions: const FlutterAuthClientOptions(
         authFlowType: AuthFlowType.pkce,
+        // Session persists by default in supabase_flutter 2.5+
+        autoRefreshToken: true,
       ),
     );
   }

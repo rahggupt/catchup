@@ -98,7 +98,10 @@ class AuthService {
         // Create default collections for new user
         await _createDefaultCollections(response.user!.id);
         
-        _logger.success('User profile and collections created', category: 'Auth');
+        // Create default RSS sources for new user
+        await _createDefaultSources(response.user!.id);
+        
+        _logger.success('User profile, collections, and sources created', category: 'Auth');
       }
       
       return response;
@@ -183,12 +186,20 @@ class AuthService {
   
   // Reset password
   Future<void> resetPassword(String email) async {
+    _logger.info('Requesting password reset for: $email', category: 'Auth');
+    
     if (_isMockMode) {
-      // Mock password reset
+      _logger.warning('Mock mode - password reset skipped', category: 'Auth');
       return;
     }
     
-    await SupabaseConfig.client.auth.resetPasswordForEmail(email);
+    try {
+      await SupabaseConfig.client.auth.resetPasswordForEmail(email);
+      _logger.success('Password reset email sent to: $email', category: 'Auth');
+    } catch (e, stackTrace) {
+      _logger.error('Password reset failed for: $email', category: 'Auth', error: e, stackTrace: stackTrace);
+      rethrow;
+    }
   }
   
   // Create user profile in database
@@ -226,36 +237,80 @@ class AuthService {
   Future<void> _createDefaultCollections(String userId) async {
     final supabaseService = SupabaseService();
     
-    print('📦 Creating default collection for new user: $userId');
+    _logger.info('Creating three default collections for new user: $userId', category: 'Auth');
     
-    try {
-      final collection = await supabaseService.createCollection(
-        name: 'MyCollection',
-        ownerId: userId,
-        privacy: 'private',
-      );
-      print('✅ Created default collection: MyCollection (ID: ${collection.id})');
-    } catch (e) {
-      print('❌ Error creating default collection: $e');
-      // Non-fatal error - user can create collections manually
+    final defaultCollections = [
+      {'name': 'My Favorites', 'privacy': 'private', 'preview': 'Save your favorite articles here'},
+      {'name': 'Reading List', 'privacy': 'private', 'preview': 'Articles you want to read later'},
+      {'name': 'Shared Articles', 'privacy': 'invite', 'preview': 'Share articles with friends'},
+    ];
+    
+    for (final collectionData in defaultCollections) {
+      try {
+        final collection = await supabaseService.createCollection(
+          name: collectionData['name']!,
+          ownerId: userId,
+          privacy: collectionData['privacy']!,
+          preview: collectionData['preview'],
+        );
+        _logger.success('Created default collection: ${collectionData['name']} (ID: ${collection.id})', category: 'Auth');
+      } catch (e, stackTrace) {
+        _logger.error('Error creating default collection: ${collectionData['name']}', category: 'Auth', error: e, stackTrace: stackTrace);
+        // Non-fatal error - user can create collections manually
+      }
     }
   }
   
   // Check if user has collections, create default if none exist
   Future<void> _ensureUserHasCollections(String userId) async {
     try {
-      print('🔍 Checking if user $userId has collections...');
+      _logger.info('Checking if user $userId has collections...', category: 'Auth');
       final supabaseService = SupabaseService();
       final collections = await supabaseService.getUserCollections(userId);
       
       if (collections.isEmpty) {
-        print('⚠️  User has no collections, creating default MyCollection');
+        _logger.warning('User has no collections, creating three default collections', category: 'Auth');
         await _createDefaultCollections(userId);
       } else {
-        print('✅ User already has ${collections.length} collection(s)');
+        _logger.success('User already has ${collections.length} collection(s)', category: 'Auth');
       }
-    } catch (e) {
-      print('❌ Error checking user collections: $e');
+    } catch (e, stackTrace) {
+      _logger.error('Error checking user collections', category: 'Auth', error: e, stackTrace: stackTrace);
+    }
+  }
+  
+  // Create default RSS sources for new user
+  Future<void> _createDefaultSources(String userId) async {
+    final supabaseService = SupabaseService();
+    
+    _logger.info('Creating default RSS sources for new user: $userId', category: 'Auth');
+    
+    final defaultSources = [
+      {
+        'name': 'TechCrunch',
+        'url': 'https://techcrunch.com/feed/',
+        'topics': ['Tech', 'Business', 'Innovation']
+      },
+      {
+        'name': 'Wired',
+        'url': 'https://www.wired.com/feed/rss',
+        'topics': ['Tech', 'Science', 'AI']
+      },
+    ];
+    
+    for (final sourceData in defaultSources) {
+      try {
+        await supabaseService.createSource(
+          userId: userId,
+          name: sourceData['name'] as String,
+          url: sourceData['url'] as String,
+          topics: sourceData['topics'] as List<String>,
+        );
+        _logger.success('Created default source: ${sourceData['name']}', category: 'Auth');
+      } catch (e, stackTrace) {
+        _logger.error('Error creating default source: ${sourceData['name']}', category: 'Auth', error: e, stackTrace: stackTrace);
+        // Non-fatal error - user can add sources manually
+      }
     }
   }
 }
