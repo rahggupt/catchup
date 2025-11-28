@@ -408,9 +408,9 @@ class _ArticleCard extends StatelessWidget {
       if (await canLaunchUrl(uri)) {
         await launchUrl(
           uri,
-          mode: LaunchMode.inAppWebView,
+          mode: LaunchMode.externalApplication,
         );
-        logger.success('Opened article in webview', category: 'Collections');
+        logger.success('Opened article in external browser', category: 'Collections');
       } else {
         logger.error('Could not launch URL: $url', category: 'Collections');
         if (context.mounted) {
