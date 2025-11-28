@@ -81,37 +81,46 @@ class AIService {
     }
   }
   
+  /// Check if query is a greeting
+  bool _isGreeting(String query) {
+    final greetings = [
+      'hello', 'hi', 'hey', 'howdy', 'greetings', 
+      'good morning', 'good afternoon', 'good evening',
+      'what\'s up', 'wassup', 'sup'
+    ];
+    final normalizedQuery = query.trim().toLowerCase();
+    return greetings.any((greeting) => normalizedQuery == greeting || normalizedQuery.startsWith('$greeting '));
+  }
+
   /// Generate AI response using the selected provider
   Future<String> _generateAIResponse(String query, String contextText) async {
+    // Handle greetings with helpful message
+    if (_isGreeting(query)) {
+      return "Hello! 👋 I'm here to help you understand the articles in your selected collection. Ask me questions about the content, and I'll answer based on what's available in your articles.";
+    }
+    
+    // If no context available, inform user
+    if (contextText.isEmpty) {
+      return "I can only answer questions based on articles in the selected collection. Please:\n\n1. Select a collection (not 'All Sources')\n2. Make sure the collection has articles\n3. Ask a question related to those articles\n\nTry asking about specific topics, people, or events mentioned in your saved articles.";
+    }
+    
     if (aiProvider == 'perplexity' && _perplexityService.isConfigured()) {
       // Use Perplexity with RAG context
-      if (contextText.isNotEmpty) {
-        // Extract just the article content from the context
-        final ragContextList = contextText.split('\n\n---\n\n')
-            .where((s) => s.trim().isNotEmpty)
-            .toList();
-        
-        return await _perplexityService.answerQuestionWithRAG(
-          question: query,
-          ragContext: ragContextList,
-        );
-      } else {
-        // Use Perplexity without RAG context
-        return await _perplexityService.generateResponse(
-          prompt: query,
-          systemPrompt: 'You are a knowledgeable assistant helping users understand articles and topics.',
-        );
-      }
+      // Extract just the article content from the context
+      final ragContextList = contextText.split('\n\n---\n\n')
+          .where((s) => s.trim().isNotEmpty)
+          .toList();
+      
+      return await _perplexityService.answerQuestionWithRAG(
+        question: query,
+        ragContext: ragContextList,
+      );
     } else {
-      // Default to Gemini
-      final prompt = contextText.isNotEmpty
-          ? AIPromptsConfig.getRagChatPrompt(
-              contextText: contextText,
-              userQuery: query,
-            )
-          : AIPromptsConfig.getGeneralChatPrompt(
-              userQuery: query,
-            );
+      // Default to Gemini with strict RAG-only instruction
+      final prompt = AIPromptsConfig.getRagChatPrompt(
+        contextText: contextText,
+        userQuery: query,
+      );
       
       return await _generateGeminiResponse(prompt);
     }

@@ -210,6 +210,42 @@ class _ScrollableArticleCardState extends State<ScrollableArticleCard> {
                             color: AppTheme.textGray.withOpacity(0.7),
                           ),
                         ),
+                        const SizedBox(width: 12),
+                        // Ask AI Button - moved here from bottom action bar
+                        InkWell(
+                          onTap: widget.onAskAI ?? () {},
+                          borderRadius: BorderRadius.circular(6),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppTheme.secondaryPurple.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: AppTheme.secondaryPurple.withOpacity(0.3),
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.auto_awesome,
+                                  size: 14,
+                                  color: AppTheme.secondaryPurple,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Ask AI',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.secondaryPurple,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -220,7 +256,7 @@ class _ScrollableArticleCardState extends State<ScrollableArticleCard> {
                       child: Text(
                         widget.article.title,
                         style: const TextStyle(
-                          fontSize: 18,
+                          fontSize: 16,
                           fontWeight: FontWeight.bold,
                           color: AppTheme.textDark,
                           height: 1.3,
@@ -235,9 +271,9 @@ class _ScrollableArticleCardState extends State<ScrollableArticleCard> {
                       child: Text(
                         widget.article.summary,
                         style: TextStyle(
-                          fontSize: 14,
+                          fontSize: 15,
                           color: AppTheme.textGray.withOpacity(0.9),
-                          height: 1.5,
+                          height: 1.6,
                         ),
                       ),
                     ),
@@ -318,12 +354,6 @@ class _ScrollableArticleCardState extends State<ScrollableArticleCard> {
                   label: 'Share',
                   color: AppTheme.textGray,
                   onTap: widget.onShare,
-                ),
-                _ActionButton(
-                  icon: Icons.auto_awesome,
-                  label: 'Ask AI',
-                  color: AppTheme.secondaryPurple,
-                  onTap: widget.onAskAI ?? () {},
                 ),
               ],
             ),

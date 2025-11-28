@@ -587,7 +587,10 @@ class SupabaseService {
             .eq('id', collectionId);
         
         _logger.success('Shareable link generated with SQL function', category: 'Database');
-        return 'catchup://collection/$token';
+        // TODO: Replace with your actual domain when deploying
+        // For Firebase Dynamic Links: https://catchup.page.link/c?token=$token
+        // For custom domain: https://catchup.app/c/$token
+        return 'https://catchup.app/c/$token';
       } catch (e) {
         // SQL function doesn't exist, generate token manually
         _logger.warning('SQL function not found, generating token manually', category: 'Database');
@@ -608,7 +611,10 @@ class SupabaseService {
             .eq('id', collectionId);
         
         _logger.success('Shareable link generated manually: $token', category: 'Database');
-        return 'catchup://collection/$token';
+        // TODO: Replace with your actual domain when deploying
+        // For Firebase Dynamic Links: https://catchup.page.link/c?token=$token
+        // For custom domain: https://catchup.app/c/$token
+        return 'https://catchup.app/c/$token';
       }
     } catch (e, stackTrace) {
       _logger.error('Failed to generate shareable link', category: 'Database', error: e, stackTrace: stackTrace);

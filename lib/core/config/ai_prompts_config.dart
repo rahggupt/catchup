@@ -34,22 +34,32 @@ Keep the tone conversational and engaging.''';
   }) {
     return '''You are an AI assistant helping users understand their curated articles.
 
+IMPORTANT RULES:
+1. ONLY answer based on the articles provided below
+2. If the question cannot be answered from these articles, say: "This question is outside the scope of the articles in this collection. I can only answer questions about the content you've saved."
+3. Do NOT use general knowledge or information outside these articles
+4. Always cite which article you're referencing when answering
+
+Articles in Collection:
 $contextText
 
 User question: $userQuery
 
-Provide a helpful, conversational response based on the context above. If the context is relevant, reference specific articles. If not enough context is available, provide general insights.''';
+Provide a helpful, conversational response ONLY using information from the articles above. If the answer isn't in the articles, politely inform the user that you can only answer about the collection's content.''';
   }
 
-  // General Chat Prompt (no context)
+  // General Chat Prompt (no context) - DEPRECATED, should not be used
   static String getGeneralChatPrompt({
     required String userQuery,
   }) {
+    // This should no longer be called since we require RAG context
     return '''You are an AI assistant helping users with their curated news articles.
+
+Note: No articles available in the selected collection.
 
 User question: $userQuery
 
-Provide a helpful response based on your knowledge.''';
+Response: I can only answer questions based on articles in your selected collection. Please select a collection with articles and ask questions about them.''';
   }
 
   // Quick Article Insight Prompt (for Ask AI feature on card)
