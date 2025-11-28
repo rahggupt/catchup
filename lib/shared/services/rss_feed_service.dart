@@ -115,8 +115,16 @@ class RssFeedService {
       return null;
     }
 
-    // Extract description (remove HTML tags)
-    final description = _stripHtml(item.description ?? '');
+    // Extract description (remove HTML tags and decode entities)
+    var description = _stripHtml(item.description ?? '');
+    
+    // If description is too short, try to get content
+    if (description.length < 100 && item.content?.value != null) {
+      final content = _stripHtml(item.content!.value!);
+      if (content.length > description.length) {
+        description = content;
+      }
+    }
     
     // Parse date
     DateTime publishedAt = DateTime.now();
@@ -154,10 +162,45 @@ class RssFeedService {
     );
   }
 
-  /// Strip HTML tags from text
+  /// Strip HTML tags from text and decode HTML entities
   String _stripHtml(String html) {
     final regExp = RegExp(r'<[^>]*>', multiLine: true, caseSensitive: false);
-    return html.replaceAll(regExp, '').trim();
+    var text = html.replaceAll(regExp, '').trim();
+    
+    // Decode common HTML entities
+    text = text
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&apos;', "'")
+        .replaceAll('&#8230;', '...')
+        .replaceAll('&hellip;', '...')
+        .replaceAll('&#8220;', '"')
+        .replaceAll('&#8221;', '"')
+        .replaceAll('&#8216;', "'")
+        .replaceAll('&#8217;', "'")
+        .replaceAll('&ndash;', '–')
+        .replaceAll('&mdash;', '—')
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&rsquo;', "'")
+        .replaceAll('&lsquo;', "'")
+        .replaceAll('&rdquo;', '"')
+        .replaceAll('&ldquo;', '"');
+    
+    // Decode numeric entities
+    final numericEntityRegex = RegExp(r'&#(\d+);');
+    text = text.replaceAllMapped(numericEntityRegex, (match) {
+      try {
+        final charCode = int.parse(match.group(1)!);
+        return String.fromCharCode(charCode);
+      } catch (e) {
+        return match.group(0)!;
+      }
+    });
+    
+    return text.trim();
   }
 
   /// Extract topic from title, description, and categories
