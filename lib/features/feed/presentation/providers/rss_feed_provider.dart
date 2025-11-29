@@ -65,6 +65,30 @@ class RssFeedNotifier extends StateNotifier<AsyncValue<List<ArticleModel>>> {
         }
       },
     );
+    
+    // Watch rejected articles and refilter when they change
+    _ref.listen<Set<String>>(
+      rejectedArticlesProvider,
+      (previous, next) {
+        if (previous != next && _allFetchedArticles.isNotEmpty) {
+          _logger.info('Rejected articles changed! Refiltering feed...', category: 'Feed');
+          // Refilter the current articles without re-fetching
+          final beforeCount = _allFetchedArticles.length;
+          _allFetchedArticles = _allFetchedArticles.where((article) => !next.contains(article.id)).toList();
+          final afterCount = _allFetchedArticles.length;
+          
+          if (beforeCount != afterCount) {
+            _logger.info('Filtered ${beforeCount - afterCount} rejected articles from feed', category: 'Feed');
+            
+            // Reset pagination and update state
+            _currentPage = 0;
+            final firstPage = _allFetchedArticles.take(_pageSize).toList();
+            state = AsyncValue.data(firstPage);
+            _logger.success('Feed updated after rejecting articles: showing ${firstPage.length} of ${_allFetchedArticles.length}', category: 'Feed');
+          }
+        }
+      },
+    );
   }
 
   /// Load articles with caching strategy

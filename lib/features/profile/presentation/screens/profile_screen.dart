@@ -575,12 +575,13 @@ class _SourceCard extends ConsumerStatefulWidget {
 }
 
 class _SourceCardState extends ConsumerState<_SourceCard> {
-  late bool isActive;
-
   @override
-  void initState() {
-    super.initState();
-    isActive = widget.source.active;
+  void didUpdateWidget(_SourceCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Widget updated with new data, ensure UI reflects latest state
+    if (oldWidget.source.active != widget.source.active) {
+      setState(() {});
+    }
   }
 
   Future<void> _toggleSource(bool value) async {
@@ -590,14 +591,11 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
     final isMockSource = !widget.source.id.contains('-') && widget.source.id.length < 5;
     
     if (isMockSource) {
-      // Just update UI for mock sources
-      setState(() => isActive = value);
+      // Mock sources can't be toggled in DB, just show message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(value 
-              ? '${widget.source.name} enabled (mock mode)' 
-              : '${widget.source.name} disabled (mock mode)'),
+            content: Text('Cannot toggle mock source (${widget.source.name})'),
             duration: const Duration(seconds: 1),
           ),
         );
@@ -770,7 +768,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
             tooltip: 'Delete source',
           ),
           Switch(
-            value: isActive,
+            value: widget.source.active,
             onChanged: _toggleSource,
           ),
         ],
