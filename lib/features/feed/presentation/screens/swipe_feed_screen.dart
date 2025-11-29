@@ -67,7 +67,8 @@ class _SwipeFeedScreenState extends ConsumerState<SwipeFeedScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final feedArticlesAsync = ref.watch(filteredArticlesProvider);
+    // Use feedArticlesProvider directly (has pagination + rejected filter built-in)
+    final feedArticlesAsync = ref.watch(feedArticlesProvider);
     final likedArticles = ref.watch(likedArticlesProvider);
 
     return Scaffold(
@@ -219,7 +220,18 @@ class _SwipeFeedScreenState extends ConsumerState<SwipeFeedScreen> {
                       setState(() {
                         _currentPageIndex = index;
                       });
-                      print('📖 Viewing article ${index + 1}/${articles.length}');
+                      _logger.info('Viewing article ${index + 1}/${articles.length}', category: 'Feed');
+                      
+                      // Lazy load: When user reaches 2 articles from the end, load more
+                      final articlesRemaining = articles.length - (index + 1);
+                      if (articlesRemaining <= 2) {
+                        _logger.info('Near end of feed ($articlesRemaining remaining), checking for more...', category: 'Feed');
+                        final notifier = ref.read(feedArticlesProvider.notifier);
+                        if (notifier.hasMoreArticles && !notifier.isLoadingMore) {
+                          _logger.info('Loading more articles...', category: 'Feed');
+                          notifier.loadMoreArticles();
+                        }
+                      }
                     },
                     itemBuilder: (context, index) {
                       final article = articles[index];

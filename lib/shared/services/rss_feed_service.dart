@@ -30,21 +30,43 @@ class RssFeedService {
   };
 
   /// Fetch articles from a single RSS feed
-  Future<List<ArticleModel>> fetchFromSource(String sourceName, {int limit = 5}) async {
-    final feedUrl = rssFeedUrls[sourceName];
-    if (feedUrl == null) {
-      print('No RSS feed URL for source: $sourceName');
+  /// Accepts optional [customFeedUrl] for user-added sources
+  Future<List<ArticleModel>> fetchFromSource(String sourceName, {int limit = 5, String? customFeedUrl}) async {
+    print('🔍 RSS: START fetchFromSource for $sourceName');
+    print('📌 RSS: customFeedUrl from DB = "$customFeedUrl"');
+    print('📌 RSS: hardcoded URL = "${rssFeedUrls[sourceName]}"');
+    
+    // Validate custom URL - must be a full URL starting with http(s)
+    final isValidUrl = customFeedUrl != null && 
+                       customFeedUrl.isNotEmpty && 
+                       (customFeedUrl.startsWith('http://') || customFeedUrl.startsWith('https://'));
+    
+    print('🔍 RSS: URL validation - isValidUrl = $isValidUrl');
+    if (customFeedUrl != null && customFeedUrl.isNotEmpty && !isValidUrl) {
+      print('⚠️ RSS: Invalid URL format (missing http/https): "$customFeedUrl"');
+      print('⚠️ RSS: Falling back to hardcoded URL');
+    }
+    
+    final feedUrl = isValidUrl ? customFeedUrl : rssFeedUrls[sourceName];
+        
+    if (feedUrl == null || feedUrl.isEmpty) {
+      print('❌ RSS: No feed URL configured for: $sourceName');
+      print('❌ RSS: customFeedUrl valid: $isValidUrl');
+      print('❌ RSS: hardcoded URL exists: ${rssFeedUrls[sourceName] != null}');
       return [];
     }
+
+    print('✅ RSS: Using URL = $feedUrl');
+    print('📊 RSS: Limit = $limit, Source = ${isValidUrl ? "Database (valid)" : "Hardcoded (fallback)"}');
 
     try {
       // Use CORS proxy for web, direct URL for mobile
       final requestUrl = _getCorsProxyUrl(feedUrl);
-      print('Fetching RSS feed for $sourceName from $feedUrl (limit: $limit)');
       if (kIsWeb) {
-        print('  → Using CORS proxy for web browser');
+        print('🌐 RSS: Using CORS proxy for web');
       }
       
+      print('⏳ RSS: Fetching from network...');
       final response = await http.get(
         Uri.parse(requestUrl),
         headers: kIsWeb ? {} : {
@@ -53,34 +75,61 @@ class RssFeedService {
         },
       ).timeout(const Duration(seconds: 15));
 
+      print('📥 RSS: Response status = ${response.statusCode}');
+      print('📏 RSS: Response body length = ${response.body.length} bytes');
+
       if (response.statusCode != 200) {
-        print('Failed to fetch $sourceName: ${response.statusCode}');
+        print('❌ RSS: HTTP error ${response.statusCode} for $sourceName');
         return [];
       }
 
+      print('🔄 RSS: Parsing XML feed...');
+      
       // Parse RSS feed
       final feed = RssFeed.parse(response.body);
+      
+      print('✅ RSS: Feed parsed successfully');
+      print('📰 RSS: Feed title = ${feed.title}');
+      print('📝 RSS: Total items in feed = ${feed.items?.length ?? 0}');
+      
       final articles = <ArticleModel>[];
 
       // Take only the specified limit (default 5, sorted by latest)
       final items = (feed.items ?? []).take(limit).toList();
+      print('📦 RSS: Processing first ${items.length} items (limit=$limit)');
       
-      for (var item in items) {
+      int parsedCount = 0;
+      int skippedCount = 0;
+      
+      for (var i = 0; i < items.length; i++) {
+        final item = items[i];
         try {
+          print('  📄 RSS: Item ${i + 1}/${items.length}:');
+          print('    Title: ${item.title?.substring(0, item.title!.length.clamp(0, 50))}...');
+          print('    Link: ${item.link}');
+          print('    Has description: ${item.description != null && item.description!.isNotEmpty}');
+          
           final article = _parseRssItem(item, sourceName);
           if (article != null) {
             articles.add(article);
+            parsedCount++;
+            print('    ✅ Parsed successfully');
+          } else {
+            skippedCount++;
+            print('    ⚠️ Skipped (null result from parser)');
           }
         } catch (e) {
-          print('Error parsing RSS item from $sourceName: $e');
+          skippedCount++;
+          print('    ❌ Error parsing: $e');
         }
       }
 
-      print('Fetched ${articles.length} articles from $sourceName');
+      print('✅ RSS: Complete! Parsed=$parsedCount, Skipped=$skippedCount, Total=$parsedCount');
       return articles;
       
-    } catch (e) {
-      print('Error fetching RSS feed for $sourceName: $e');
+    } catch (e, stackTrace) {
+      print('❌ RSS: Exception for $sourceName: $e');
+      print('Stack trace: $stackTrace');
       return [];
     }
   }
@@ -108,12 +157,22 @@ class RssFeedService {
 
   /// Parse an RSS item into an ArticleModel
   ArticleModel? _parseRssItem(RssItem item, String source) {
+    print('      🔍 _parseRssItem: title exists=${item.title != null}, link exists=${item.link != null}');
+    
     final title = item.title?.trim();
     final link = item.link?.trim();
     
-    if (title == null || title.isEmpty || link == null || link.isEmpty) {
+    if (title == null || title.isEmpty) {
+      print('      ❌ _parseRssItem: REJECTED - title is null/empty');
       return null;
     }
+    
+    if (link == null || link.isEmpty) {
+      print('      ❌ _parseRssItem: REJECTED - link is null/empty');
+      return null;
+    }
+    
+    print('      ✅ _parseRssItem: Title and link OK, continuing...');
 
     // Extract description (remove HTML tags and decode entities)
     var description = _stripHtml(item.description ?? '');
