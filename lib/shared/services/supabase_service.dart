@@ -587,10 +587,8 @@ class SupabaseService {
             .eq('id', collectionId);
         
         _logger.success('Shareable link generated with SQL function', category: 'Database');
-        // TODO: Replace with your actual domain when deploying
-        // For Firebase Dynamic Links: https://catchup.page.link/c?token=$token
-        // For custom domain: https://catchup.app/c/$token
-        return 'https://catchup.app/c/$token';
+        // Using Airbridge subdomain for deep linking
+        return 'https://catchup.airbridge.io/c/$token';
       } catch (e) {
         // SQL function doesn't exist, generate token manually
         _logger.warning('SQL function not found, generating token manually', category: 'Database');
@@ -611,10 +609,8 @@ class SupabaseService {
             .eq('id', collectionId);
         
         _logger.success('Shareable link generated manually: $token', category: 'Database');
-        // TODO: Replace with your actual domain when deploying
-        // For Firebase Dynamic Links: https://catchup.page.link/c?token=$token
-        // For custom domain: https://catchup.app/c/$token
-        return 'https://catchup.app/c/$token';
+        // Using Airbridge subdomain for deep linking
+        return 'https://catchup.airbridge.io/c/$token';
       }
     } catch (e, stackTrace) {
       _logger.error('Failed to generate shareable link', category: 'Database', error: e, stackTrace: stackTrace);
@@ -623,13 +619,13 @@ class SupabaseService {
   }
 
   /// Get collection by shareable token
-  Future<Map<String, dynamic>?> getCollectionByToken(String token) async {
+  Future<CollectionModel?> getCollectionByToken(String token) async {
     try {
       _logger.info('Fetching collection by token', category: 'Database');
       
       final response = await _client
           .from('collections')
-          .select('*, owner:users!owner_id(email, raw_user_meta_data)')
+          .select('*')
           .eq('shareable_token', token)
           .eq('share_enabled', true)
           .maybeSingle();
@@ -640,7 +636,7 @@ class SupabaseService {
       }
       
       _logger.success('Collection found by token', category: 'Database');
-      return response as Map<String, dynamic>;
+      return CollectionModel.fromJson(response as Map<String, dynamic>);
     } catch (e, stackTrace) {
       _logger.error('Failed to fetch collection by token', category: 'Database', error: e, stackTrace: stackTrace);
       rethrow;

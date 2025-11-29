@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'core/config/supabase_config.dart';
+import 'core/config/airbridge_config.dart';
 import 'app.dart';
 
 void main() async {
@@ -18,6 +19,9 @@ void main() async {
   
   // Initialize Supabase
   await SupabaseConfig.initialize();
+  
+  // Initialize Airbridge for deep linking and analytics
+  await AirbridgeConfig.initialize();
   
   runApp(
     const ProviderScope(
