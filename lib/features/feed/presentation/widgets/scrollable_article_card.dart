@@ -256,7 +256,7 @@ class _ScrollableArticleCardState extends State<ScrollableArticleCard> {
                       child: Text(
                         widget.article.title,
                         style: const TextStyle(
-                          fontSize: 16,
+                          fontSize: 18,
                           fontWeight: FontWeight.bold,
                           color: AppTheme.textDark,
                           height: 1.3,
@@ -271,7 +271,7 @@ class _ScrollableArticleCardState extends State<ScrollableArticleCard> {
                       child: Text(
                         widget.article.summary,
                         style: TextStyle(
-                          fontSize: 15,
+                          fontSize: 17,
                           color: AppTheme.textGray.withOpacity(0.9),
                           height: 1.6,
                         ),
