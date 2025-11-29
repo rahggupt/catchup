@@ -402,33 +402,24 @@ class _ArticleCard extends StatelessWidget {
     
     logger.info('Opening article URL: $url', category: 'Collections');
     
-    final uri = Uri.parse(url);
-    
     try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(
-          uri,
-          mode: LaunchMode.externalApplication,
-        );
-        logger.success('Opened article in external browser', category: 'Collections');
-      } else {
-        logger.error('Could not launch URL: $url', category: 'Collections');
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Could not open article'),
-              backgroundColor: AppTheme.errorRed,
-            ),
-          );
-        }
-      }
+      final uri = Uri.parse(url);
+      
+      // Skip canLaunchUrl check - it's unreliable on some Android versions
+      // Just try to launch directly
+      await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      logger.success('Opened article in external browser', category: 'Collections');
     } catch (e, stackTrace) {
       logger.error('Error launching URL', category: 'Collections', error: e, stackTrace: stackTrace);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error opening article'),
+          SnackBar(
+            content: Text('Could not open article: $url'),
             backgroundColor: AppTheme.errorRed,
+            duration: const Duration(seconds: 3),
           ),
         );
       }

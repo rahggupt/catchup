@@ -14,11 +14,82 @@ import '../widgets/collection_members_modal.dart';
 import '../widgets/create_collection_modal.dart';
 import 'collection_details_screen.dart';
 
-class CollectionsScreen extends ConsumerWidget {
+class CollectionsScreen extends ConsumerStatefulWidget {
   const CollectionsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CollectionsScreen> createState() => _CollectionsScreenState();
+}
+
+class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
+  String _searchQuery = '';
+  String _sortOption = 'recent';
+
+  List<CollectionModel> _filterAndSortCollections(List<CollectionModel> collections) {
+    var filtered = collections;
+    
+    // Apply search filter
+    if (_searchQuery.isNotEmpty) {
+      filtered = filtered.where((collection) {
+        return collection.name.toLowerCase().contains(_searchQuery.toLowerCase());
+      }).toList();
+    }
+    
+    // Apply sorting
+    switch (_sortOption) {
+      case 'alphabetical':
+        filtered.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        break;
+      case 'most_active':
+        filtered.sort((a, b) => b.stats.articleCount.compareTo(a.stats.articleCount));
+        break;
+      case 'recent':
+      default:
+        filtered.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        break;
+    }
+    
+    return filtered;
+  }
+
+  void _showSearchDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        String query = _searchQuery;
+        return AlertDialog(
+          title: const Text('Search Collections'),
+          content: TextField(
+            autofocus: true,
+            decoration: const InputDecoration(
+              hintText: 'Enter collection name...',
+              prefixIcon: Icon(Icons.search),
+            ),
+            onChanged: (value) => query = value,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                setState(() => _searchQuery = '');
+                Navigator.pop(context);
+              },
+              child: const Text('Clear'),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() => _searchQuery = query);
+                Navigator.pop(context);
+              },
+              child: const Text('Search'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final collectionsAsync = ref.watch(userCollectionsProvider);
 
     return collectionsAsync.when(
@@ -28,11 +99,17 @@ class CollectionsScreen extends ConsumerWidget {
       error: (error, stack) => Scaffold(
         body: Center(child: Text('Error: $error')),
       ),
-      data: (collections) => _buildContent(context, ref, collections),
+      data: (collections) {
+        final filteredCollections = _filterAndSortCollections(collections);
+        return _buildContent(context, filteredCollections);
+      },
     );
   }
 
-  Widget _buildContent(BuildContext context, WidgetRef ref, List<CollectionModel> collections) {
+  Widget _buildContent(BuildContext context, List<CollectionModel> collections) {
+    String sortLabel = _sortOption == 'recent' ? 'Recent' 
+                     : _sortOption == 'alphabetical' ? 'Alphabetical' 
+                     : 'Most Active';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -53,15 +130,18 @@ class CollectionsScreen extends ConsumerWidget {
                     children: [
                       IconButton(
                         icon: const Icon(Icons.search),
-                        onPressed: () {},
+                        onPressed: _showSearchDialog,
                       ),
                       PopupMenuButton<String>(
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8),
+                        onSelected: (value) {
+                          setState(() => _sortOption = value);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
                           child: Row(
                             children: [
-                              Text('Recent'),
-                              Icon(Icons.arrow_drop_down),
+                              Text(sortLabel),
+                              const Icon(Icons.arrow_drop_down),
                             ],
                           ),
                         ),
@@ -87,14 +167,30 @@ class CollectionsScreen extends ConsumerWidget {
             ),
             // Collections Grid
             Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: collections.length,
-                itemBuilder: (context, index) {
-                  final collection = collections[index];
-                  return _CollectionCard(collection: collection);
-                },
-              ),
+              child: collections.isEmpty 
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.folder_open, size: 64, color: AppTheme.textGray),
+                        const SizedBox(height: 16),
+                        Text(
+                          _searchQuery.isEmpty 
+                            ? 'No collections yet' 
+                            : 'No collections found',
+                          style: const TextStyle(fontSize: 16, color: AppTheme.textGray),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: collections.length,
+                    itemBuilder: (context, index) {
+                      final collection = collections[index];
+                      return _CollectionCard(collection: collection);
+                    },
+                  ),
             ),
           ],
         ),

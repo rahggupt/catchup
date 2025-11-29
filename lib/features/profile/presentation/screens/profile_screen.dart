@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../shared/services/mock_data_service.dart';
+import '../../../../shared/services/logger_service.dart';
 import '../../../../core/config/supabase_config.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/profile_provider.dart';
 import '../../../feed/presentation/widgets/add_source_modal.dart';
+import '../../../feed/presentation/providers/rss_feed_provider.dart';
 import '../widgets/ai_config_modal.dart';
 import '../../../debug/presentation/screens/debug_logs_screen.dart';
 
@@ -573,27 +575,27 @@ class _SourceCard extends ConsumerStatefulWidget {
 }
 
 class _SourceCardState extends ConsumerState<_SourceCard> {
-  late bool isActive;
-
   @override
-  void initState() {
-    super.initState();
-    isActive = widget.source.active;
+  void didUpdateWidget(_SourceCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Widget updated with new data, ensure UI reflects latest state
+    if (oldWidget.source.active != widget.source.active) {
+      setState(() {});
+    }
   }
 
   Future<void> _toggleSource(bool value) async {
+    final logger = LoggerService();
+    
     // Check if this is a mock source (simple numeric ID like "1", "2") or real UUID
     final isMockSource = !widget.source.id.contains('-') && widget.source.id.length < 5;
     
     if (isMockSource) {
-      // Just update UI for mock sources
-      setState(() => isActive = value);
+      // Mock sources can't be toggled in DB, just show message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(value 
-              ? '${widget.source.name} enabled (mock mode)' 
-              : '${widget.source.name} disabled (mock mode)'),
+            content: Text('Cannot toggle mock source (${widget.source.name})'),
             duration: const Duration(seconds: 1),
           ),
         );
@@ -602,23 +604,38 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
     }
 
     try {
+      logger.info('Toggling source ${widget.source.name} to ${value ? "active" : "inactive"}', category: 'Profile');
+      
       final supabaseService = ref.read(supabaseServiceProvider);
       await supabaseService.toggleSource(widget.source.id, value);
       
-      // Refresh the sources list and feed - this will rebuild the entire sources section
+      logger.success('Source ${widget.source.name} toggled successfully', category: 'Profile');
+      
+      // Clear article cache to force fresh fetch
+      final cacheService = ref.read(articleCacheServiceProvider);
+      await cacheService.clearCache();
+      logger.info('Article cache cleared', category: 'Profile');
+      
+      // Invalidate sources provider (this will trigger RssFeedNotifier listener)
       ref.invalidate(userSourcesProvider);
+      
+      // Also invalidate the feed provider to force immediate refresh
+      ref.invalidate(feedArticlesProvider);
+      
+      logger.info('Providers invalidated, feed will refresh', category: 'Profile');
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(value 
-              ? '${widget.source.name} enabled' 
-              : '${widget.source.name} disabled'),
-            duration: const Duration(seconds: 1),
+              ? '${widget.source.name} enabled - refreshing feed' 
+              : '${widget.source.name} disabled - refreshing feed'),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      logger.error('Failed to toggle source', category: 'Profile', error: e, stackTrace: stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -751,7 +768,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
             tooltip: 'Delete source',
           ),
           Switch(
-            value: isActive,
+            value: widget.source.active,
             onChanged: _toggleSource,
           ),
         ],

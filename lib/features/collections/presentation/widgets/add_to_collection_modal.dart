@@ -156,10 +156,11 @@ class _AddToCollectionModalState extends ConsumerState<AddToCollectionModal> {
         return;
       }
 
-      // Refresh collections and profile stats
-      _logger.info('Refreshing collections and profile stats', category: 'Collections');
+      // Refresh collections, profile stats, and collection articles
+      _logger.info('Refreshing collections, profile stats, and collection articles', category: 'Collections');
       ref.invalidate(userCollectionsProvider);
       ref.invalidate(profileUserProvider);
+      ref.invalidate(collectionArticlesRealtimeProvider(collectionId));
 
       _logger.success('Article save workflow completed', category: 'Collections');
       

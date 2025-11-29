@@ -120,33 +120,24 @@ class _ArticleCardState extends State<ArticleCard> with SingleTickerProviderStat
   Future<void> _openArticleWebview() async {
     _logger.info('Opening article URL: ${widget.article.url}', category: 'Feed');
     
-    final url = Uri.parse(widget.article.url);
-    
     try {
-      if (await canLaunchUrl(url)) {
-        await launchUrl(
-          url,
-          mode: LaunchMode.inAppWebView,
-        );
-        _logger.success('Opened article in webview', category: 'Feed');
-      } else {
-        _logger.error('Could not launch URL: ${widget.article.url}', category: 'Feed');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Could not open article'),
-              backgroundColor: AppTheme.errorRed,
-            ),
-          );
-        }
-      }
+      final url = Uri.parse(widget.article.url);
+      
+      // Skip canLaunchUrl check - it's unreliable on some Android versions
+      // Just try to launch directly
+      await launchUrl(
+        url,
+        mode: LaunchMode.externalApplication,
+      );
+      _logger.success('Opened article in external browser', category: 'Feed');
     } catch (e, stackTrace) {
       _logger.error('Error launching URL', category: 'Feed', error: e, stackTrace: stackTrace);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error opening article'),
+          SnackBar(
+            content: Text('Could not open article: ${widget.article.url}'),
             backgroundColor: AppTheme.errorRed,
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -196,27 +187,6 @@ class _ArticleCardState extends State<ArticleCard> with SingleTickerProviderStat
                       borderRadius: BorderRadius.circular(20),
                       child: Column(
                         children: [
-                          // Ask AI button at top
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            child: ElevatedButton.icon(
-                              onPressed: widget.onAskAI,
-                              icon: const Icon(Icons.psychology, size: 18),
-                              label: const Text('Ask AI'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.secondaryPurple,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                  vertical: 10,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                              ),
-                            ),
-                          ),
-                          
                           // Article image
                           if (widget.article.imageUrl != null)
                             SizedBox(
@@ -244,113 +214,156 @@ class _ArticleCardState extends State<ArticleCard> with SingleTickerProviderStat
 
                           // Content area (non-scrollable, fixed height)
                           Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.all(20),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  // Source and date
-                                  Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 6,
+                            child: Column(
+                              children: [
+                                Expanded(
+                                  child: SingleChildScrollView(
+                                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        // Source and date
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 12,
+                                                vertical: 6,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: AppTheme.primaryBlue.withOpacity(0.1),
+                                                borderRadius: BorderRadius.circular(20),
+                                              ),
+                                              child: Text(
+                                                widget.article.source,
+                                                style: const TextStyle(
+                                                  color: AppTheme.primaryBlue,
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            if (widget.article.publishedAt != null)
+                                              Text(
+                                                _formatDate(widget.article.publishedAt!),
+                                                style: const TextStyle(
+                                                  color: AppTheme.textGray,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            const Spacer(),
+                                            // Ask AI Button - moved here from top
+                                            InkWell(
+                                              onTap: widget.onAskAI,
+                                              borderRadius: BorderRadius.circular(6),
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                decoration: BoxDecoration(
+                                                  color: AppTheme.secondaryPurple.withOpacity(0.1),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                  border: Border.all(
+                                                    color: AppTheme.secondaryPurple.withOpacity(0.3),
+                                                    width: 1,
+                                                  ),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Icon(
+                                                      Icons.auto_awesome,
+                                                      size: 14,
+                                                      color: AppTheme.secondaryPurple,
+                                                    ),
+                                                    const SizedBox(width: 4),
+                                                    Text(
+                                                      'Ask AI',
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        fontWeight: FontWeight.w600,
+                                                        color: AppTheme.secondaryPurple,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                        decoration: BoxDecoration(
-                                          color: AppTheme.primaryBlue.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(20),
-                                        ),
-                                        child: Text(
-                                          widget.article.source,
-                                          style: const TextStyle(
-                                            color: AppTheme.primaryBlue,
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 12,
+                                        const SizedBox(height: 10),
+
+                                        // Title (clickable to open webview)
+                                        GestureDetector(
+                                          onTap: _openArticleWebview,
+                                          child: Text(
+                                            widget.article.title,
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold,
+                                              color: AppTheme.primaryBlue,
+                                              height: 1.2,
+                                              decoration: TextDecoration.underline,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      if (widget.article.publishedAt != null)
+                                        const SizedBox(height: 6),
+
+                                        // Author
+                                        if (widget.article.author != null)
+                                          Padding(
+                                            padding: const EdgeInsets.only(bottom: 6),
+                                            child: Text(
+                                              'By ${widget.article.author}',
+                                              style: const TextStyle(
+                                                color: AppTheme.textGray,
+                                                fontSize: 12,
+                                                fontStyle: FontStyle.italic,
+                                              ),
+                                            ),
+                                          ),
+
+                                        // Summary
                                         Text(
-                                          _formatDate(widget.article.publishedAt!),
+                                          widget.article.summary,
                                           style: const TextStyle(
-                                            color: AppTheme.textGray,
-                                            fontSize: 12,
+                                            fontSize: 14,
+                                            color: AppTheme.textDark,
+                                            height: 1.4,
                                           ),
                                         ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 16),
-
-                                  // Title (clickable to open webview)
-                                  GestureDetector(
-                                    onTap: _openArticleWebview,
-                                    child: Text(
-                                      widget.article.title,
-                                      style: const TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.primaryBlue,
-                                        height: 1.3,
-                                        decoration: TextDecoration.underline,
-                                      ),
+                                        
+                                        // Content (if available)
+                                        if (widget.article.content != null && widget.article.content!.isNotEmpty)
+                                          Padding(
+                                            padding: const EdgeInsets.only(top: 10),
+                                            child: Text(
+                                              widget.article.content!,
+                                              style: const TextStyle(
+                                                fontSize: 14,
+                                                color: AppTheme.textDark,
+                                                height: 1.4,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
                                     ),
                                   ),
-                                  const SizedBox(height: 12),
-
-                                  // Author
-                                  if (widget.article.author != null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(bottom: 12),
-                                      child: Text(
-                                        'By ${widget.article.author}',
-                                        style: const TextStyle(
-                                          color: AppTheme.textGray,
-                                          fontSize: 14,
-                                          fontStyle: FontStyle.italic,
-                                        ),
-                                      ),
-                                    ),
-
-                                  // Summary
-                                  Text(
-                                    widget.article.summary,
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      color: AppTheme.textDark,
-                                      height: 1.6,
-                                    ),
-                                  ),
-                                  
-                                  // Content (if available)
-                                  if (widget.article.content != null && widget.article.content!.isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 16),
-                                      child: Text(
-                                        widget.article.content!,
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          color: AppTheme.textDark,
-                                          height: 1.6,
-                                        ),
-                                      ),
-                                    ),
-
-                                  const SizedBox(height: 16),
-
-                                  // Article counter
-                                  Center(
+                                ),
+                                
+                                // Article counter at the very bottom
+                                Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  child: Center(
                                     child: Text(
                                       '${widget.currentIndex} of ${widget.totalCount}',
                                       style: const TextStyle(
                                         color: AppTheme.textGray,
-                                        fontSize: 14,
+                                        fontSize: 12,
                                       ),
                                     ),
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
