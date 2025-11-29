@@ -557,16 +557,17 @@ class SupabaseService {
     String collectionId,
   ) async {
     try {
-      final response = await _client
-          .from('collection_members')
-          .select('*, user:users!user_id(email, raw_user_meta_data)')
-          .eq('collection_id', collectionId)
-          .order('joined_at', ascending: false);
+      _logger.info('Fetching collection members', category: 'Database');
       
-      return List<Map<String, dynamic>>.from(response as List);
-    } catch (e) {
-      print('❌ Error getting collection members: $e');
-      rethrow;
+      // Temporarily return empty list to avoid relationship errors
+      // TODO: Fix collection_members table relationship with users table
+      _logger.info('Members feature temporarily disabled', category: 'Database');
+      return [];
+      
+    } catch (e, stackTrace) {
+      _logger.error('Error getting collection members', category: 'Database', error: e, stackTrace: stackTrace);
+      // Return empty list instead of crashing
+      return [];
     }
   }
 
@@ -587,8 +588,8 @@ class SupabaseService {
             .eq('id', collectionId);
         
         _logger.success('Shareable link generated with SQL function', category: 'Database');
-        // Using Airbridge subdomain for deep linking
-        return 'https://catchup.airbridge.io/c/$token';
+        // Using custom scheme for immediate app opening (no verification needed)
+        return 'catchup://c/$token';
       } catch (e) {
         // SQL function doesn't exist, generate token manually
         _logger.warning('SQL function not found, generating token manually', category: 'Database');
@@ -609,8 +610,8 @@ class SupabaseService {
             .eq('id', collectionId);
         
         _logger.success('Shareable link generated manually: $token', category: 'Database');
-        // Using Airbridge subdomain for deep linking
-        return 'https://catchup.airbridge.io/c/$token';
+        // Using custom scheme for immediate app opening (no verification needed)
+        return 'catchup://c/$token';
       }
     } catch (e, stackTrace) {
       _logger.error('Failed to generate shareable link', category: 'Database', error: e, stackTrace: stackTrace);

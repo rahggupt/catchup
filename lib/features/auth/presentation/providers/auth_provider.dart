@@ -103,9 +103,9 @@ class AuthService {
         await _createDefaultSources(response.user!.id);
         
         // Track user signup in Airbridge
-        await AirbridgeConfig.setUserIdentifier(response.user!.id);
+        AirbridgeConfig.setUserIdentifier(response.user!.id);
         if (response.user!.email != null) {
-          await AirbridgeConfig.setUserEmail(response.user!.email!);
+          AirbridgeConfig.setUserEmail(response.user!.email!);
         }
         
         _logger.success('User profile, collections, sources created, and tracked in Airbridge', category: 'Auth');
@@ -143,9 +143,9 @@ class AuthService {
         await _ensureUserHasCollections(response.user!.id);
         
         // Track user login in Airbridge
-        await AirbridgeConfig.setUserIdentifier(response.user!.id);
+        AirbridgeConfig.setUserIdentifier(response.user!.id);
         if (response.user!.email != null) {
-          await AirbridgeConfig.setUserEmail(response.user!.email!);
+          AirbridgeConfig.setUserEmail(response.user!.email!);
         }
       }
       
@@ -195,7 +195,7 @@ class AuthService {
     }
     
     // Clear Airbridge user data before signing out
-    await AirbridgeConfig.clearUser();
+    AirbridgeConfig.clearUser();
     
     await SupabaseConfig.client.auth.signOut();
   }

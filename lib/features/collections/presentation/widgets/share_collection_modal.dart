@@ -94,8 +94,14 @@ class _ShareCollectionModalState extends ConsumerState<ShareCollectionModal> {
   Future<void> _shareLink() async {
     if (_shareableLink != null) {
       await Share.share(
-        'Check out my collection "${widget.collection.name}" on CatchUp!\n\n$_shareableLink',
-        subject: 'Shared Collection: ${widget.collection.name}',
+        '📰 Check out my collection "${widget.collection.name}" on CatchUp!\n\n'
+        '📲 How to open:\n'
+        '1. Long press the link below\n'
+        '2. Tap "Open" or "Open link"\n'
+        '3. Select CatchUp app\n\n'
+        '$_shareableLink\n\n'
+        '❓ Don\'t have CatchUp? Ask me for the app!',
+        subject: 'Collection Shared: ${widget.collection.name}',
       );
     }
   }
