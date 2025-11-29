@@ -134,8 +134,8 @@ class _CollectionPrivacyModalState
   Future<void> _copyShareLink() async {
     if (_shareToken == null) return;
     
-    // TODO: Replace with your actual app domain
-    final shareLink = 'https://catchup.app/collection/$_shareToken';
+    // Use custom scheme for direct app opening (no web server needed)
+    final shareLink = 'catchup://c/$_shareToken';
     
     await Clipboard.setData(ClipboardData(text: shareLink));
     
@@ -324,7 +324,7 @@ class _CollectionPrivacyModalState
                         children: [
                           Expanded(
                             child: Text(
-                              'https://catchup.app/collection/$_shareToken',
+                              'catchup://c/$_shareToken',
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: AppTheme.textGray,

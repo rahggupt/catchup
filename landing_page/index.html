@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Open in CatchUp</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 500px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        .logo {
+            font-size: 60px;
+            margin-bottom: 20px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 28px;
+        }
+        
+        p {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+            line-height: 1.6;
+        }
+        
+        .btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 40px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 18px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin: 10px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+        
+        .btn-secondary:hover {
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .info {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid #e0e0e0;
+            color: #999;
+            font-size: 14px;
+        }
+        
+        .spinner {
+            display: none;
+            margin: 20px auto;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .attempting {
+            color: #667eea;
+            font-weight: 600;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">📱</div>
+        <h1>Open Collection in CatchUp</h1>
+        <p>You've been invited to view a shared collection!</p>
+        
+        <div class="spinner" id="spinner"></div>
+        <p class="attempting" id="attempting" style="display:none;">
+            Opening CatchUp app...
+        </p>
+        
+        <a href="#" class="btn" id="openBtn" onclick="openApp(); return false;">
+            Open in CatchUp
+        </a>
+        
+        <div class="info">
+            <p><strong>Don't have CatchUp?</strong></p>
+            <p>Contact the person who shared this link to get the app!</p>
+        </div>
+    </div>
+
+    <script>
+        // Get collection token from URL
+        // URL format: https://yourusername.github.io/catchup-share/?c=TOKEN
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('c') || window.location.hash.substring(1);
+        
+        function openApp() {
+            const deepLink = `catchup://c/${token}`;
+            const spinner = document.getElementById('spinner');
+            const attempting = document.getElementById('attempting');
+            const openBtn = document.getElementById('openBtn');
+            
+            // Show loading state
+            spinner.style.display = 'block';
+            attempting.style.display = 'block';
+            openBtn.style.display = 'none';
+            
+            // Try to open the app
+            window.location.href = deepLink;
+            
+            // If app doesn't open in 2 seconds, show button again
+            setTimeout(() => {
+                spinner.style.display = 'none';
+                attempting.style.display = 'none';
+                openBtn.style.display = 'inline-block';
+                openBtn.textContent = 'Try Again';
+            }, 2000);
+        }
+        
+        // Auto-open on page load (optional)
+        // setTimeout(openApp, 500);
+    </script>
+</body>
+</html>
+

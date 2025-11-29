@@ -1,0 +1,11 @@
+# Android Keystore Properties Template
+# 
+# 1. Copy this file to: android/key.properties
+# 2. Fill in your actual values below
+# 3. NEVER commit key.properties to git (it's in .gitignore)
+
+storePassword=YOUR_KEYSTORE_PASSWORD_HERE
+keyPassword=YOUR_KEY_PASSWORD_HERE
+keyAlias=catchup-key
+storeFile=/Users/YOUR_USERNAME/keystores/catchup-release-key.jks
+

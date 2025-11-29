@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/feed/presentation/screens/swipe_feed_screen.dart';
 import '../../features/collections/presentation/screens/collections_screen.dart';
 import '../../features/ai_chat/presentation/screens/ai_chat_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
+import '../../shared/services/deep_link_service.dart';
 
-class MainNavigation extends StatefulWidget {
+class MainNavigation extends ConsumerStatefulWidget {
   const MainNavigation({super.key});
 
   @override
-  State<MainNavigation> createState() => _MainNavigationState();
+  ConsumerState<MainNavigation> createState() => _MainNavigationState();
 }
 
-class _MainNavigationState extends State<MainNavigation> {
+class _MainNavigationState extends ConsumerState<MainNavigation> {
   int _currentIndex = 0;
   DateTime? _lastBackPressTime;
+  bool _deepLinkInitialized = false;
   
   final List<Widget> _screens = const [
     SwipeFeedScreen(),
@@ -53,6 +56,14 @@ class _MainNavigationState extends State<MainNavigation> {
 
   @override
   Widget build(BuildContext context) {
+    // Initialize deep link handler once
+    if (!_deepLinkInitialized) {
+      _deepLinkInitialized = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(deepLinkServiceProvider).initialize(context, ref);
+      });
+    }
+    
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(

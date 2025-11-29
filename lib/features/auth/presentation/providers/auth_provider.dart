@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/config/supabase_config.dart';
+import '../../../../core/config/airbridge_config.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../shared/models/user_model.dart';
 import '../../../../shared/services/supabase_service.dart';
@@ -101,7 +102,13 @@ class AuthService {
         // Create default RSS sources for new user
         await _createDefaultSources(response.user!.id);
         
-        _logger.success('User profile, collections, and sources created', category: 'Auth');
+        // Track user signup in Airbridge
+        AirbridgeConfig.setUserIdentifier(response.user!.id);
+        if (response.user!.email != null) {
+          AirbridgeConfig.setUserEmail(response.user!.email!);
+        }
+        
+        _logger.success('User profile, collections, sources created, and tracked in Airbridge', category: 'Auth');
       }
       
       return response;
@@ -134,6 +141,12 @@ class AuthService {
       // Ensure user has at least one collection
       if (response.user != null) {
         await _ensureUserHasCollections(response.user!.id);
+        
+        // Track user login in Airbridge
+        AirbridgeConfig.setUserIdentifier(response.user!.id);
+        if (response.user!.email != null) {
+          AirbridgeConfig.setUserEmail(response.user!.email!);
+        }
       }
       
       return response;
@@ -180,6 +193,9 @@ class AuthService {
       // Mock logout - do nothing
       return;
     }
+    
+    // Clear Airbridge user data before signing out
+    AirbridgeConfig.clearUser();
     
     await SupabaseConfig.client.auth.signOut();
   }
