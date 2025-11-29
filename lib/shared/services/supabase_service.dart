@@ -588,8 +588,8 @@ class SupabaseService {
             .eq('id', collectionId);
         
         _logger.success('Shareable link generated with SQL function', category: 'Database');
-        // Using custom scheme for immediate app opening (no verification needed)
-        return 'catchup://c/$token';
+        // Using GitHub Pages landing page for clickable HTTPS links
+        return 'https://rahggupt.github.io/catchup/landing_page/?c=$token';
       } catch (e) {
         // SQL function doesn't exist, generate token manually
         _logger.warning('SQL function not found, generating token manually', category: 'Database');
@@ -610,8 +610,8 @@ class SupabaseService {
             .eq('id', collectionId);
         
         _logger.success('Shareable link generated manually: $token', category: 'Database');
-        // Using custom scheme for immediate app opening (no verification needed)
-        return 'catchup://c/$token';
+        // Using GitHub Pages landing page for clickable HTTPS links
+        return 'https://rahggupt.github.io/catchup/landing_page/?c=$token';
       }
     } catch (e, stackTrace) {
       _logger.error('Failed to generate shareable link', category: 'Database', error: e, stackTrace: stackTrace);

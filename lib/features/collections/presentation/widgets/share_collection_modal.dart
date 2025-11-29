@@ -95,12 +95,8 @@ class _ShareCollectionModalState extends ConsumerState<ShareCollectionModal> {
     if (_shareableLink != null) {
       await Share.share(
         '📰 Check out my collection "${widget.collection.name}" on CatchUp!\n\n'
-        '📲 How to open:\n'
-        '1. Long press the link below\n'
-        '2. Tap "Open" or "Open link"\n'
-        '3. Select CatchUp app\n\n'
-        '$_shareableLink\n\n'
-        '❓ Don\'t have CatchUp? Ask me for the app!',
+        '👉 Click to open:\n$_shareableLink\n\n'
+        '📲 Don\'t have CatchUp? Let me know!',
         subject: 'Collection Shared: ${widget.collection.name}',
       );
     }
