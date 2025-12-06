@@ -121,23 +121,42 @@
             Open in CatchUp
         </a>
         
-        <div class="info">
+        <a href="#" class="btn btn-secondary" id="downloadBtn" style="display:none;" onclick="downloadApp(); return false;">
+            📥 Download CatchUp APK
+        </a>
+        
+        <div class="info" id="initialInfo">
             <p><strong>Don't have CatchUp?</strong></p>
-            <p>Contact the person who shared this link to get the app!</p>
+            <p>Click the button above to open, or download the app below.</p>
+        </div>
+        
+        <div class="info" id="downloadInfo" style="display:none;">
+            <p><strong>How to install:</strong></p>
+            <p>1. Download the APK file<br>
+            2. Enable "Install from Unknown Sources" in Settings<br>
+            3. Open the downloaded file and install<br>
+            4. Come back to this link to open your collection!</p>
         </div>
     </div>
 
     <script>
         // Get collection token from URL
-        // URL format: https://yourusername.github.io/catchup-share/?c=TOKEN
+        // URL format: https://yourusername.github.io/catchup/?c=TOKEN
         const urlParams = new URLSearchParams(window.location.search);
         const token = urlParams.get('c') || window.location.hash.substring(1);
+        
+        // IMPORTANT: Update this with your GitHub username and repo name
+        const GITHUB_REPO = 'rahggupt/catchup';
+        const APK_DOWNLOAD_URL = `https://github.com/${GITHUB_REPO}/releases/latest/download/catchup.apk`;
+        
+        let appInstalled = null; // Track if app is installed
         
         function openApp() {
             const deepLink = `catchup://c/${token}`;
             const spinner = document.getElementById('spinner');
             const attempting = document.getElementById('attempting');
             const openBtn = document.getElementById('openBtn');
+            const downloadBtn = document.getElementById('downloadBtn');
             
             // Show loading state
             spinner.style.display = 'block';
@@ -147,17 +166,60 @@
             // Try to open the app
             window.location.href = deepLink;
             
-            // If app doesn't open in 2 seconds, show button again
+            // If app doesn't open in 2.5 seconds, assume it's not installed
             setTimeout(() => {
-                spinner.style.display = 'none';
-                attempting.style.display = 'none';
-                openBtn.style.display = 'inline-block';
-                openBtn.textContent = 'Try Again';
-            }, 2000);
+                // Check if page is still visible (if app opened, page would be hidden)
+                if (!document.hidden) {
+                    // App probably not installed
+                    appInstalled = false;
+                    spinner.style.display = 'none';
+                    attempting.style.display = 'none';
+                    attempting.textContent = 'Could not open app. Download it below!';
+                    attempting.style.display = 'block';
+                    
+                    // Show download button
+                    downloadBtn.style.display = 'inline-block';
+                    openBtn.textContent = 'Try Again';
+                    openBtn.style.display = 'inline-block';
+                    
+                    // Switch info text
+                    document.getElementById('initialInfo').style.display = 'none';
+                    document.getElementById('downloadInfo').style.display = 'block';
+                } else {
+                    // App opened successfully!
+                    appInstalled = true;
+                }
+            }, 2500);
         }
         
-        // Auto-open on page load (optional)
-        // setTimeout(openApp, 500);
+        function downloadApp() {
+            // Open APK download link
+            window.location.href = APK_DOWNLOAD_URL;
+            
+            // Update UI
+            const downloadBtn = document.getElementById('downloadBtn');
+            downloadBtn.textContent = '✅ Download Started...';
+            
+            setTimeout(() => {
+                downloadBtn.textContent = '📥 Download Again';
+            }, 3000);
+        }
+        
+        // Auto-open on page load
+        window.addEventListener('load', () => {
+            // Wait a moment for page to fully render
+            setTimeout(() => {
+                openApp();
+            }, 500);
+        });
+        
+        // Detect when user returns to page (app closed or not installed)
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && appInstalled === null) {
+                // User came back, app might not be installed
+                console.log('User returned to page - app might not be installed');
+            }
+        });
     </script>
 </body>
 </html>
