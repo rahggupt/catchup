@@ -523,14 +523,19 @@ class SupabaseService {
     String? invitedBy,
   }) async {
     try {
+      _logger.info('Adding user as $role to collection', category: 'Database');
+      
       await _client.from('collection_members').insert({
         'collection_id': collectionId,
         'user_id': userId,
         'role': role,
         'invited_by': invitedBy,
+        'joined_at': DateTime.now().toIso8601String(),
       });
-    } catch (e) {
-      print('❌ Error adding collection member: $e');
+      
+      _logger.success('User added as collection member', category: 'Database');
+    } catch (e, stackTrace) {
+      _logger.error('Failed to add collection member', category: 'Database', error: e, stackTrace: stackTrace);
       rethrow;
     }
   }
@@ -739,6 +744,33 @@ class SupabaseService {
     } catch (e) {
       print('❌ Error checking collection access: $e');
       return false;
+    }
+  }
+
+  /// Get user's role in a collection
+  /// Returns null if user is not a member
+  Future<String?> getUserCollectionRole(String userId, String collectionId) async {
+    try {
+      _logger.info('Checking user role in collection', category: 'Database');
+      
+      final response = await _client
+          .from('collection_members')
+          .select('role')
+          .eq('collection_id', collectionId)
+          .eq('user_id', userId)
+          .maybeSingle();
+      
+      if (response == null) {
+        _logger.info('User is not a member of this collection', category: 'Database');
+        return null;
+      }
+      
+      final role = response['role'] as String?;
+      _logger.success('User role: $role', category: 'Database');
+      return role;
+    } catch (e, stackTrace) {
+      _logger.error('Error getting user collection role', category: 'Database', error: e, stackTrace: stackTrace);
+      return null;
     }
   }
 }

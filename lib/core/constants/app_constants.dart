@@ -51,6 +51,11 @@ class AppConstants {
   static const Duration apiTimeout = Duration(seconds: 30);
   static const Duration uploadTimeout = Duration(minutes: 5);
   
+  // Session Management
+  // User will stay logged in for this duration unless they explicitly log out
+  // Default: 30 days (configurable)
+  static const int sessionTimeoutDays = 30;
+  
   // AI
   static const String defaultAiProvider = 'perplexity'; // 'gemini' or 'perplexity'
   static const int maxTokens = 2000;

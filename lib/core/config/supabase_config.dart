@@ -16,9 +16,16 @@ class SupabaseConfig {
       authOptions: const FlutterAuthClientOptions(
         authFlowType: AuthFlowType.pkce,
         // Session persists by default in supabase_flutter 2.5+
+        // Automatically refresh tokens before they expire
         autoRefreshToken: true,
+        // Note: Session expires after JWT expiry time set in Supabase backend
+        // Set JWT expiry in Supabase Dashboard → Authentication → Settings to 2592000 seconds (30 days)
       ),
     );
+    
+    print('✅ Supabase initialized with automatic session persistence');
+    print('📅 Session timeout configured for ${AppConstants.sessionTimeoutDays} days');
+    print('⚠️  IMPORTANT: Set JWT expiry in Supabase Dashboard to ${AppConstants.sessionTimeoutDays * 24 * 60 * 60} seconds (${AppConstants.sessionTimeoutDays} days)');
   }
   
   static SupabaseClient get client {
