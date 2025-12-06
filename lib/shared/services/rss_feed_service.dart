@@ -185,14 +185,40 @@ class RssFeedService {
       }
     }
     
-    // Parse date
-    DateTime publishedAt = DateTime.now();
-    try {
-      if (item.pubDate != null) {
+    // Parse published date with multiple fallback strategies
+    DateTime? publishedAt;
+
+    // Strategy 1: Try item.pubDate
+    if (item.pubDate != null) {
+      try {
         publishedAt = item.pubDate as DateTime;
+        print('      📅 Date parsed from pubDate: $publishedAt');
+      } catch (e) {
+        print('      ⚠️ Failed to parse pubDate: $e');
       }
-    } catch (e) {
+    }
+
+    // Strategy 2: Try dc:date if pubDate failed
+    if (publishedAt == null && item.dc?.date != null) {
+      try {
+        publishedAt = DateTime.parse(item.dc!.date!);
+        print('      📅 Date parsed from dc:date: $publishedAt');
+      } catch (e) {
+        print('      ⚠️ Failed to parse dc:date: $e');
+      }
+    }
+
+    // Strategy 3: Check if it's in the future (bad date)
+    if (publishedAt != null && publishedAt.isAfter(DateTime.now())) {
+      print('      ⚠️ Date is in the future, ignoring: $publishedAt');
+      publishedAt = null;
+    }
+
+    // Strategy 4: As last resort, use createdAt (now) but log it
+    if (publishedAt == null) {
       publishedAt = DateTime.now();
+      print('      ⚠️ WARNING: No valid date found, using current time');
+      print('      📰 Article: ${title.substring(0, title.length.clamp(0, 50))}');
     }
 
     // Extract author

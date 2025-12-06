@@ -1,6 +1,8 @@
 import 'package:airbridge_flutter_sdk/airbridge_flutter_sdk.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/config/supabase_config.dart';
+import '../../features/collections/presentation/widgets/join_collection_dialog.dart';
 import 'logger_service.dart';
 import 'supabase_service.dart';
 
@@ -58,6 +60,24 @@ class DeepLinkService {
       _logger.info('🔑 [DeepLink] Token: "$token"', category: 'DeepLink');
       _logger.info('🔑 [DeepLink] Token length: ${token.length} characters', category: 'DeepLink');
       
+      // Check authentication first
+      final user = SupabaseConfig.auth.currentUser;
+      if (user == null) {
+        _logger.warning('⚠️ [DeepLink] User not logged in', category: 'DeepLink');
+        
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please log in to view this collection'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+          // TODO: Store token for after login and redirect to login screen
+        }
+        return;
+      }
+      
       // Fetch collection by shareable token
       _logger.info('⏳ [DeepLink] Calling getCollectionByToken...', category: 'DeepLink');
       final collection = await _supabaseService.getCollectionByToken(token);
@@ -87,6 +107,65 @@ class DeepLinkService {
       _logger.success('   - Name: ${collection.name}', category: 'DeepLink');
       _logger.success('   - ID: ${collection.id}', category: 'DeepLink');
       _logger.success('   - Articles: ${collection.stats.articleCount}', category: 'DeepLink');
+      
+      // Check if user is already a member
+      _logger.info('👤 [DeepLink] Checking user membership...', category: 'DeepLink');
+      final userRole = await _supabaseService.getUserCollectionRole(user.id, collection.id);
+      
+      if (userRole == null) {
+        _logger.info('🆕 [DeepLink] User is not a member, showing join dialog', category: 'DeepLink');
+        
+        // Show join dialog
+        if (context.mounted) {
+          final shouldJoin = await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => JoinCollectionDialog(collection: collection),
+          );
+          
+          if (shouldJoin == true) {
+            _logger.info('✅ [DeepLink] User chose to join collection', category: 'DeepLink');
+            
+            try {
+              // Add user as viewer
+              await _supabaseService.addCollectionMember(
+                collectionId: collection.id,
+                userId: user.id,
+                role: 'viewer',
+              );
+              
+              _logger.success('✅ [DeepLink] User added as viewer', category: 'DeepLink');
+              
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Joined "${collection.name}" as a viewer'),
+                    backgroundColor: Colors.green,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              }
+            } catch (e, stackTrace) {
+              _logger.error('❌ [DeepLink] Failed to add user as member', category: 'DeepLink', error: e, stackTrace: stackTrace);
+              
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Failed to join collection. Please try again.'),
+                    backgroundColor: Colors.red,
+                    duration: Duration(seconds: 3),
+                  ),
+                );
+              }
+              return;
+            }
+          } else {
+            _logger.info('👀 [DeepLink] User chose to just browse', category: 'DeepLink');
+          }
+        }
+      } else {
+        _logger.success('✅ [DeepLink] User is already a member (role: $userRole)', category: 'DeepLink');
+      }
       
       // Track collection open event
       trackCollectionOpen(collection.id, collection.name);
